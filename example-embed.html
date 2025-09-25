@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Walkie Talkie Embed Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .embed-container {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            background: #f9f9f9;
+        }
+
+        .embed-example {
+            margin: 10px 0;
+        }
+
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+
+        iframe {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .controls {
+            margin: 10px 0;
+        }
+
+        .controls button {
+            margin: 5px;
+            padding: 8px 15px;
+            border: none;
+            background: #2196f3;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .controls button:hover {
+            background: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <h1>Walkie Talkie Embed Examples</h1>
+
+    <p>This page demonstrates different ways to embed the Walkie Talkie PWA in your website.</p>
+
+    <div class="embed-container">
+        <h2>Channel 1 Embed (300x200)</h2>
+        <div class="embed-example">
+            <iframe
+                id="embed-channel1"
+                src="embed.php?channel=1&theme=default&width=300px&height=200px"
+                width="300"
+                height="200"
+                frameborder="0">
+            </iframe>
+        </div>
+        <pre><code>&lt;iframe
+    src="embed.php?channel=1&amp;theme=default&amp;width=300px&amp;height=200px"
+    width="300"
+    height="200"
+    frameborder="0"&gt;
+&lt;/iframe&gt;</code></pre>
+    </div>
+
+    <div class="embed-container">
+        <h2>Channel 5 Embed (300x200)</h2>
+        <div class="embed-example">
+            <iframe
+                id="embed-channel5"
+                src="embed.php?channel=5&theme=default&width=300px&height=200px"
+                width="300"
+                height="200"
+                frameborder="0">
+            </iframe>
+        </div>
+        <pre><code>&lt;iframe
+    src="embed.php?channel=5&amp;theme=default&amp;width=300px&amp;height=200px"
+    width="300"
+    height="200"
+    frameborder="0"&gt;
+&lt;/iframe&gt;</code></pre>
+    </div>
+
+    <div class="embed-container">
+        <h2>Wide Embed (500x150)</h2>
+        <div class="embed-example">
+            <iframe
+                id="embed-wide"
+                src="embed.php?channel=1&theme=default&width=500px&height=150px"
+                width="500"
+                height="150"
+                frameborder="0">
+            </iframe>
+        </div>
+        <pre><code>&lt;iframe
+    src="embed.php?channel=1&amp;theme=default&amp;width=500px&amp;height=150px"
+    width="500"
+    height="150"
+    frameborder="0"&gt;
+&lt;/iframe&gt;</code></pre>
+    </div>
+
+    <div class="embed-container">
+        <h2>Dark Theme (300x200)</h2>
+        <div class="embed-example">
+            <iframe
+                id="embed-dark"
+                src="embed.php?channel=1&theme=dark&width=300px&height=200px"
+                width="300"
+                height="200"
+                frameborder="0">
+            </iframe>
+        </div>
+        <pre><code>&lt;iframe
+    src="embed.php?channel=1&amp;theme=dark&amp;width=300px&amp;height=200px"
+    width="300"
+    height="200"
+    frameborder="0"&gt;
+&lt;/iframe&gt;</code></pre>
+    </div>
+
+    <div class="embed-container">
+        <h2>Minimal Theme (400x120)</h2>
+        <div class="embed-example">
+            <iframe
+                id="embed-minimal"
+                src="embed.php?channel=1&theme=minimal&width=400px&height=120px"
+                width="400"
+                height="120"
+                frameborder="0">
+            </iframe>
+        </div>
+        <pre><code>&lt;iframe
+    src="embed.php?channel=1&amp;theme=minimal&amp;width=400px&amp;height=120px"
+    width="400"
+    height="120"
+    frameborder="0"&gt;
+&lt;/iframe&gt;</code></pre>
+    </div>
+
+    <div class="embed-container">
+        <h2>JavaScript Integration</h2>
+        <p>You can also communicate with the embedded walkie talkie using JavaScript:</p>
+
+        <div class="controls">
+            <button onclick="sendMessageToEmbed('walkie-talkie-mute')">Mute</button>
+            <button onclick="sendMessageToEmbed('walkie-talkie-unmute')">Unmute</button>
+        </div>
+
+        <pre><code>// Listen for messages from the embedded walkie talkie
+window.addEventListener('message', function(event) {
+    if (event.data.type === 'walkie-talkie-connected') {
+        console.log('Walkie talkie connected to channel:', event.data.channel);
+    }
+
+    if (event.data.type === 'walkie-talkie-speaking') {
+        console.log('Someone is speaking:', event.data.speaking);
+    }
+});
+
+// Send messages to the embedded walkie talkie
+function sendMessageToEmbed(action) {
+    const iframe = document.getElementById('embed-default');
+    iframe.contentWindow.postMessage({
+        type: action
+    }, '*');
+}</code></pre>
+    </div>
+
+    <h2>Direct Link</h2>
+    <p>You can also link directly to the walkie talkie:</p>
+    <p><a href="index.php" target="_blank">Open Walkie Talkie in new window</a></p>
+
+    <h2>New Features</h2>
+    <div class="embed-container">
+        <h3>Background Notifications</h3>
+        <p>The walkie talkie now supports background notifications when someone starts transmitting on your last joined channel:</p>
+        <ul>
+            <li>📱 Push notifications when app is in background</li>
+            <li>🔔 Shows "New transmission on Channel X" message</li>
+            <li>👆 Click notification to return to app</li>
+            <li>⚙️ Automatically requests permission on first load</li>
+        </ul>
+        <p><strong>Test it:</strong> Open the app, join a channel, minimize/switch tabs, have someone else speak on that channel!</p>
+    </div>
+
+    <h2>Installation Instructions</h2>
+    <ol>
+        <li>Make sure the WebSocket server is running: <code>php server.php</code></li>
+        <li>Serve the web files from the <code>public/</code> directory</li>
+        <li>Update the WebSocket URL in the embed if needed</li>
+        <li>Test microphone permissions (requires HTTPS in production)</li>
+        <li><strong>For notifications:</strong> Allow notification permissions when prompted</li>
+    </ol>
+
+    <script>
+        // Example JavaScript integration
+        window.addEventListener('message', function(event) {
+            console.log('Message from walkie talkie:', event.data);
+
+            if (event.data.type === 'walkie-talkie-connected') {
+                console.log('✅ Walkie talkie connected to channel:', event.data.channel);
+            }
+
+            if (event.data.type === 'walkie-talkie-speaking') {
+                console.log(event.data.speaking ? '🗣️ Someone is speaking' : '🤫 Speaking stopped');
+            }
+        });
+
+        function sendMessageToEmbed(action) {
+            const iframe = document.getElementById('embed-default');
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({
+                    type: action
+                }, '*');
+                console.log('Sent message:', action);
+            }
+        }
+    </script>
+</body>
+</html>
