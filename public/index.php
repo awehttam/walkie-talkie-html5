@@ -79,8 +79,8 @@
         const initialChannel = urlParams.get('channel') || '1';
 
         const app = new WalkieTalkie({
-            serverUrl: 'ws://localhost:8080',
-            channel: initialChannel
+            channel: initialChannel,
+            configUrl: 'config.php'
         });
 
         app.init();

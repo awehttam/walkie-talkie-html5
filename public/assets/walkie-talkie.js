@@ -3,7 +3,7 @@ class WalkieTalkie {
         this.serverUrl = options.serverUrl || null; // Will be fetched from config if not provided
         this.channel = options.channel || '1';
         this.embedMode = options.embedMode || false;
-        this.configUrl = options.configUrl || '../config.php';
+        this.configUrl = options.configUrl || 'config.php';
 
         this.ws = null;
         this.audioContext = null;

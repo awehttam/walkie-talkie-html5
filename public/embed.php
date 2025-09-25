@@ -62,9 +62,9 @@ $height = $_GET['height'] ?? '300px';
     <script src="assets/walkie-talkie.js"></script>
     <script>
         const app = new WalkieTalkie({
-            serverUrl: 'ws://localhost:8080',
             channel: '<?php echo htmlspecialchars($channel); ?>',
-            embedMode: true
+            embedMode: true,
+            configUrl: 'config.php'
         });
 
         app.init();
