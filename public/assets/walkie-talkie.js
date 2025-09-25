@@ -1,8 +1,9 @@
 class WalkieTalkie {
     constructor(options = {}) {
-        this.serverUrl = options.serverUrl || 'ws://localhost:8080';
+        this.serverUrl = options.serverUrl || null; // Will be fetched from config if not provided
         this.channel = options.channel || '1';
         this.embedMode = options.embedMode || false;
+        this.configUrl = options.configUrl || '../config.php';
 
         this.ws = null;
         this.audioContext = null;
@@ -19,12 +20,37 @@ class WalkieTalkie {
         this.courtesyBeepEnabled = true;
     }
 
-    init() {
+    async init() {
         this.setupUI();
+        await this.loadConfig();
         this.connectWebSocket();
         this.requestMicrophoneAccess();
         this.setupNotifications();
         this.trackAppVisibility();
+    }
+
+    async loadConfig() {
+        if (this.serverUrl) {
+            // Server URL was provided in constructor options
+            return;
+        }
+
+        try {
+            const response = await fetch(this.configUrl);
+            if (!response.ok) {
+                throw new Error(`Config fetch failed: ${response.status}`);
+            }
+
+            const config = await response.json();
+            this.serverUrl = config.websocketUrl;
+
+            if (config.debug) {
+                console.log('Debug mode enabled, loaded config:', config);
+            }
+        } catch (error) {
+            console.warn('Failed to load config, using default WebSocket URL:', error);
+            this.serverUrl = 'ws://localhost:8080';
+        }
     }
 
     on(event, callback) {
