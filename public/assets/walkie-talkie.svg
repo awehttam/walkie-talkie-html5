@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Main body -->
+  <rect x="60" y="40" width="72" height="120" rx="8" ry="8" fill="#2c3e50" stroke="#34495e" stroke-width="2"/>
+
+  <!-- Screen -->
+  <rect x="68" y="48" width="56" height="32" rx="4" ry="4" fill="#34495e"/>
+  <rect x="72" y="52" width="48" height="24" rx="2" ry="2" fill="#1abc9c"/>
+
+  <!-- Speaker grille -->
+  <g fill="#7f8c8d">
+    <circle cx="76" cy="92" r="1.5"/>
+    <circle cx="84" cy="92" r="1.5"/>
+    <circle cx="92" cy="92" r="1.5"/>
+    <circle cx="100" cy="92" r="1.5"/>
+    <circle cx="108" cy="92" r="1.5"/>
+    <circle cx="116" cy="92" r="1.5"/>
+    <circle cx="80" cy="100" r="1.5"/>
+    <circle cx="88" cy="100" r="1.5"/>
+    <circle cx="96" cy="100" r="1.5"/>
+    <circle cx="104" cy="100" r="1.5"/>
+    <circle cx="112" cy="100" r="1.5"/>
+    <circle cx="76" cy="108" r="1.5"/>
+    <circle cx="84" cy="108" r="1.5"/>
+    <circle cx="92" cy="108" r="1.5"/>
+    <circle cx="100" cy="108" r="1.5"/>
+    <circle cx="108" cy="108" r="1.5"/>
+    <circle cx="116" cy="108" r="1.5"/>
+  </g>
+
+  <!-- Push-to-talk button -->
+  <circle cx="96" cy="130" r="12" fill="#e74c3c" stroke="#c0392b" stroke-width="2"/>
+  <text x="96" y="136" text-anchor="middle" font-family="Arial, sans-serif" font-size="8" fill="white" font-weight="bold">PTT</text>
+
+  <!-- Antenna -->
+  <rect x="94" y="20" width="4" height="25" fill="#95a5a6"/>
+  <circle cx="96" cy="18" r="3" fill="#bdc3c7"/>
+
+  <!-- Volume/channel knob -->
+  <circle cx="80" cy="130" r="6" fill="#7f8c8d" stroke="#6c7b7d" stroke-width="1"/>
+  <rect x="78" y="126" width="4" height="2" fill="#6c7b7d"/>
+
+  <!-- Power indicator -->
+  <circle cx="112" cy="130" r="3" fill="#27ae60"/>
+
+  <!-- Belt clip -->
+  <rect x="132" y="70" width="8" height="40" rx="4" ry="4" fill="#7f8c8d" stroke="#6c7b7d" stroke-width="1"/>
+</svg>
