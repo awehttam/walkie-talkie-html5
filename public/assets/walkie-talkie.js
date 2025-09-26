@@ -18,7 +18,7 @@ class WalkieTalkie {
 
         // Track notification rate limiting (1 hour = 3600000ms)
         this.lastNotificationTime = 0;
-        this.notificationCooldown = 3600000; // 1 hour
+        this.notificationCooldown = 300; // 5 minutes
 
         // Track when we're speaking to prevent self-notifications
         this.isSpeaking = false;
