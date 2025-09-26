@@ -20,9 +20,21 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
 
 2. **Start the WebSocket Server**
    ```bash
+   # Start as daemon (recommended for production)
+   php server.php start
+
+   # Or run directly for development
    php server.php
    ```
    The WebSocket server will run on `ws://localhost:8080`
+
+   **Daemon commands:**
+   ```bash
+   php server.php start    # Start daemon
+   php server.php stop     # Stop daemon
+   php server.php restart  # Restart daemon
+   php server.php status   # Check status
+   ```
 
 3. **Serve the Web Files**
    Set up a web server pointing to the `public/` directory. For development:
@@ -104,6 +116,37 @@ walkie-talkie/
 - HTTPS required for microphone access in production
 - Configure CORS headers for cross-origin embedding
 - Consider implementing user authentication for production use
+
+## Production Deployment
+
+### Running as a System Service
+
+For production environments, set up the WebSocket server to run automatically:
+
+1. **Add to crontab** (Linux/macOS):
+   ```bash
+   crontab -e
+   ```
+   Add these lines (update path to your installation):
+   ```cron
+   # Start daemon at system reboot
+   @reboot cd /path/to/walkie-talkie && php server.php start
+
+   # Check every 5 minutes and start if not running
+   */5 * * * * cd /path/to/walkie-talkie && php server.php start
+   ```
+
+2. **Log files**:
+   - Daemon logs: `walkie-talkie.log`
+   - PID file: `walkie-talkie.pid`
+
+3. **Environment Configuration**:
+   Create a `.env` file to customize settings:
+   ```env
+   WEBSOCKET_HOST=0.0.0.0
+   WEBSOCKET_PORT=8080
+   DEBUG=false
+   ```
 
 ## Development
 

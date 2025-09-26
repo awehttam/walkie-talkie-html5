@@ -1,0 +1,11 @@
+# Walkie Talkie Daemon Cron Configuration
+# Add these lines to your crontab using: crontab -e
+
+# Start daemon at system reboot
+@reboot cd /path/to/walkie-talkie && php server.php start
+
+# Check every 5 minutes and start daemon if not running
+*/5 * * * * cd /path/to/walkie-talkie && php server.php start
+
+# Optional: Log cleanup (run weekly to prevent log file from growing too large)
+# 0 2 * * 0 cd /path/to/walkie-talkie && truncate -s 0 walkie-talkie.log
