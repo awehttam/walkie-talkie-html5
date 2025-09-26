@@ -7,7 +7,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="assets/style.css">
     <meta name="theme-color" content="#2196F3">
-    <link rel="icon" type="image/png" href="assets/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="assets/icon-192.png">
 </head>
 <body>
     <div id="app">
@@ -64,15 +65,75 @@
         </main>
 
         <footer class="footer">
-            <p>Walkie Talkie PWA - Ready for embedding</p>
+            <p>Walkie Talkie by <a href="https://github.com/awehttam/walkie-talkie-html5" target="_blank" rel="noopener noreferrer">awehttam</a></p>
         </footer>
     </div>
 
     <script src="assets/walkie-talkie.js"></script>
     <script>
+        let deferredPrompt;
+        let installButton;
+
+        // Service Worker registration
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js');
         }
+
+        // PWA Install prompt handling
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            showInstallButton();
+        });
+
+        function showInstallButton() {
+            if (!installButton) {
+                installButton = document.createElement('button');
+                installButton.textContent = '📱 Install App';
+                installButton.className = 'install-btn';
+                installButton.style.cssText = `
+                    position: fixed;
+                    top: 10px;
+                    right: 10px;
+                    background: #2196F3;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    z-index: 1000;
+                `;
+                installButton.addEventListener('click', installApp);
+                document.body.appendChild(installButton);
+            }
+        }
+
+        async function installApp() {
+            if (!deferredPrompt) return;
+
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+
+            if (outcome === 'accepted') {
+                console.log('PWA installed');
+            }
+
+            deferredPrompt = null;
+            if (installButton) {
+                installButton.remove();
+                installButton = null;
+            }
+        }
+
+        // Hide install button if already installed
+        window.addEventListener('appinstalled', () => {
+            if (installButton) {
+                installButton.remove();
+                installButton = null;
+            }
+            console.log('PWA was installed');
+        });
 
         // Get channel from URL parameter or default to 1
         const urlParams = new URLSearchParams(window.location.search);

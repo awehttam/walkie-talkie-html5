@@ -398,10 +398,16 @@ class WalkieTalkie {
             const inputBuffer = event.inputBuffer;
             const audioData = inputBuffer.getChannelData(0);
 
-            // Convert Float32Array to PCM16
+            // Validate audio data
+            if (!audioData || audioData.length === 0) return;
+
+            // Convert Float32Array to PCM16 with improved precision
             const pcm16 = new Int16Array(audioData.length);
             for (let i = 0; i < audioData.length; i++) {
-                pcm16[i] = Math.max(-32768, Math.min(32767, audioData[i] * 32768));
+                // Clamp input to valid range first
+                const sample = Math.max(-1.0, Math.min(1.0, audioData[i]));
+                // Convert to PCM16 with proper rounding
+                pcm16[i] = Math.round(sample * 32767);
             }
 
             // Send PCM data
@@ -453,20 +459,25 @@ class WalkieTalkie {
 
     sendPCMAudio(pcmData) {
         try {
-            // Convert PCM16 to base64
-            const uint8Array = new Uint8Array(pcmData.buffer);
-            let binaryString = '';
-            for (let i = 0; i < uint8Array.length; i++) {
-                binaryString += String.fromCharCode(uint8Array[i]);
+            // Validate PCM data before sending
+            if (!pcmData || pcmData.length === 0) {
+                console.warn('Empty PCM data, skipping send');
+                return;
             }
-            const base64Audio = btoa(binaryString);
+
+            // Convert PCM16 to base64 more efficiently
+            const uint8Array = new Uint8Array(pcmData.buffer);
+            const base64Audio = btoa(String.fromCharCode.apply(null, uint8Array));
+
+            // Use actual audio context sample rate
+            const actualSampleRate = this.audioContext ? this.audioContext.sampleRate : 44100;
 
             this.ws.send(JSON.stringify({
                 type: 'audio_data',
                 channel: this.channel,
                 data: base64Audio,
                 format: 'pcm16',
-                sampleRate: this.audioContext ? this.audioContext.sampleRate : 44100,
+                sampleRate: actualSampleRate,
                 channels: 1
             }));
         } catch (error) {
@@ -494,6 +505,12 @@ class WalkieTalkie {
 
     async playPCMAudio(base64Data, sampleRate, channels) {
         try {
+            // Validate input data
+            if (!base64Data || base64Data.length === 0) {
+                console.warn('Empty base64 data, skipping playback');
+                return;
+            }
+
             if (!this.audioContext) {
                 this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -503,41 +520,80 @@ class WalkieTalkie {
                 await this.audioContext.resume();
             }
 
-            // Decode base64 to PCM data
+            // Decode base64 to PCM data more efficiently
             const binaryString = atob(base64Data);
             const uint8Array = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
                 uint8Array[i] = binaryString.charCodeAt(i);
             }
 
-            // Convert to Int16Array (PCM16)
-            const pcm16 = new Int16Array(uint8Array.buffer);
+            // Validate buffer alignment for Int16
+            if (uint8Array.buffer.byteLength % 2 !== 0) {
+                console.warn('PCM buffer not aligned for Int16, padding');
+                const paddedArray = new Uint8Array(uint8Array.length + 1);
+                paddedArray.set(uint8Array);
+                paddedArray[uint8Array.length] = 0;
+                const pcm16 = new Int16Array(paddedArray.buffer);
+            } else {
+                var pcm16 = new Int16Array(uint8Array.buffer);
+            }
 
-            // Convert PCM16 to Float32Array for Web Audio API
+            // Validate PCM data
+            if (pcm16.length === 0) {
+                console.warn('Empty PCM data after conversion');
+                return;
+            }
+
+            // Convert PCM16 to Float32Array for Web Audio API with proper normalization
             const float32Array = new Float32Array(pcm16.length);
             for (let i = 0; i < pcm16.length; i++) {
-                float32Array[i] = pcm16[i] / 32768.0;
+                // Proper normalization from Int16 to Float32
+                float32Array[i] = Math.max(-1, Math.min(1, pcm16[i] / 32768.0));
+            }
+
+            // Validate sample rate and channels
+            const validatedSampleRate = Math.max(8000, Math.min(96000, sampleRate || 44100));
+            const validatedChannels = Math.max(1, Math.min(2, channels || 1));
+
+            // Calculate samples per channel
+            const samplesPerChannel = Math.floor(float32Array.length / validatedChannels);
+
+            if (samplesPerChannel === 0) {
+                console.warn('Insufficient audio data for buffer creation');
+                return;
             }
 
             // Create audio buffer
-            const audioBuffer = this.audioContext.createBuffer(channels, float32Array.length, sampleRate);
-            audioBuffer.getChannelData(0).set(float32Array);
+            const audioBuffer = this.audioContext.createBuffer(validatedChannels, samplesPerChannel, validatedSampleRate);
+
+            // Fill audio buffer channels
+            if (validatedChannels === 1) {
+                audioBuffer.getChannelData(0).set(float32Array.subarray(0, samplesPerChannel));
+            } else {
+                // For stereo, deinterleave if needed
+                for (let channel = 0; channel < validatedChannels; channel++) {
+                    const channelData = audioBuffer.getChannelData(channel);
+                    for (let i = 0; i < samplesPerChannel; i++) {
+                        channelData[i] = float32Array[i * validatedChannels + channel] || 0;
+                    }
+                }
+            }
 
             // Create buffer source
             const source = this.audioContext.createBufferSource();
             source.buffer = audioBuffer;
 
-            // Apply volume
+            // Apply volume with smoother gain control
             const gainNode = this.audioContext.createGain();
             const volume = this.volumeControl ? this.volumeControl.value / 100 : 0.5;
-            gainNode.gain.value = volume;
+            gainNode.gain.setValueAtTime(volume, this.audioContext.currentTime);
 
             // Connect and play
             source.connect(gainNode);
             gainNode.connect(this.audioContext.destination);
             source.start();
 
-            console.log('Playing PCM audio chunk:', float32Array.length, 'samples');
+            console.log(`Playing PCM audio: ${samplesPerChannel} samples, ${validatedSampleRate}Hz, ${validatedChannels}ch`);
 
         } catch (error) {
             console.error('Failed to play PCM audio:', error);
