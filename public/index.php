@@ -59,13 +59,13 @@
             </div>
 
             <div class="instructions">
-                <p>Press and hold the microphone button to talk on Channel 1</p>
+                <p>Press and hold the microphone button to talk on the selected Channel</p>
                 <p>Make sure to allow microphone access when prompted</p>
             </div>
         </main>
 
         <footer class="footer">
-            <p>Walkie Talkie by <a href="https://github.com/awehttam/walkie-talkie-html5" target="_blank" rel="noopener noreferrer">awehttam</a></p>
+            <p><a href="https://github.com/awehttam/walkie-talkie-html5" target="_blank" rel="noopener noreferrer">Walkie Talkie</a> by awehttam</p>
         </footer>
     </div>
 
