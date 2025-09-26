@@ -293,14 +293,17 @@ class WalkieTalkie {
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true,
-                    sampleRate: 44100
+                    autoGainControl: true
+                    // Let the browser choose the optimal sample rate
                 }
             });
 
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: 44100
-            });
+            // Create audio context without forcing sample rate
+            if (!this.audioContext) {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            console.log(`Audio context sample rate: ${this.audioContext.sampleRate}Hz`);
 
             if (this.pttButton) {
                 this.pttButton.disabled = false;
@@ -316,12 +319,12 @@ class WalkieTalkie {
         }
     }
 
-    startTalking() {
+    async startTalking() {
         if (!this.audioStream || !this.isConnected || this.isRecording) return;
 
         try {
             // Use Web Audio API for real-time audio processing
-            this.setupWebAudioStreaming();
+            await this.setupWebAudioStreaming();
 
             this.isRecording = true;
             this.pttButton.classList.add('recording');
@@ -337,23 +340,56 @@ class WalkieTalkie {
         }
     }
 
-    setupWebAudioStreaming() {
-        // Create audio context if not exists
+    async setupWebAudioStreaming() {
+        // Create audio context if not exists, but don't force sample rate
         if (!this.audioContext) {
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: 44100
-            });
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
 
         // Resume audio context if suspended
         if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
+            await this.audioContext.resume();
         }
 
+        try {
+            // Load audio worklet if not already loaded
+            if (!this.audioWorkletLoaded) {
+                await this.audioContext.audioWorklet.addModule('assets/audio-processor.js');
+                this.audioWorkletLoaded = true;
+            }
+
+            // Create source from microphone stream
+            this.microphoneSource = this.audioContext.createMediaStreamSource(this.audioStream);
+
+            // Create AudioWorkletNode for audio processing
+            this.audioProcessor = new AudioWorkletNode(this.audioContext, 'audio-processor');
+
+            // Listen for audio data from the worklet
+            this.audioProcessor.port.onmessage = (event) => {
+                if (event.data.type === 'audioData') {
+                    this.sendPCMAudio(event.data.data);
+                }
+            };
+
+            // Connect audio nodes
+            this.microphoneSource.connect(this.audioProcessor);
+            // Don't connect to destination to avoid feedback
+            // this.audioProcessor.connect(this.audioContext.destination);
+
+            // Start recording in the worklet
+            this.audioProcessor.port.postMessage({ type: 'start' });
+
+        } catch (error) {
+            console.warn('AudioWorklet not supported, falling back to ScriptProcessorNode:', error);
+            this.setupLegacyAudioStreaming();
+        }
+    }
+
+    setupLegacyAudioStreaming() {
         // Create source from microphone stream
         this.microphoneSource = this.audioContext.createMediaStreamSource(this.audioStream);
 
-        // Create script processor for audio processing
+        // Create script processor for audio processing (legacy fallback)
         this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
         this.scriptProcessor.onaudioprocess = (event) => {
@@ -372,9 +408,9 @@ class WalkieTalkie {
             this.sendPCMAudio(pcm16);
         };
 
-        // Connect audio nodes
+        // Connect audio nodes (don't connect to destination to avoid feedback)
         this.microphoneSource.connect(this.scriptProcessor);
-        this.scriptProcessor.connect(this.audioContext.destination);
+        // this.scriptProcessor.connect(this.audioContext.destination);
     }
 
     stopTalking() {
@@ -383,11 +419,20 @@ class WalkieTalkie {
         this.isRecording = false;
         this.pttButton.classList.remove('recording');
 
-        // Disconnect Web Audio nodes
+        // Stop recording in the worklet
+        if (this.audioProcessor) {
+            this.audioProcessor.port.postMessage({ type: 'stop' });
+            this.audioProcessor.disconnect();
+            this.audioProcessor = null;
+        }
+
+        // Disconnect legacy script processor
         if (this.scriptProcessor) {
             this.scriptProcessor.disconnect();
             this.scriptProcessor = null;
         }
+
+        // Disconnect microphone source
         if (this.microphoneSource) {
             this.microphoneSource.disconnect();
             this.microphoneSource = null;
@@ -421,7 +466,7 @@ class WalkieTalkie {
                 channel: this.channel,
                 data: base64Audio,
                 format: 'pcm16',
-                sampleRate: 44100,
+                sampleRate: this.audioContext ? this.audioContext.sampleRate : 44100,
                 channels: 1
             }));
         } catch (error) {
@@ -450,9 +495,7 @@ class WalkieTalkie {
     async playPCMAudio(base64Data, sampleRate, channels) {
         try {
             if (!this.audioContext) {
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                    sampleRate: sampleRate
-                });
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
 
             // Resume audio context if suspended
