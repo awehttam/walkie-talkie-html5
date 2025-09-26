@@ -10,6 +10,9 @@ class WalkieTalkie {
         this.mediaRecorder = null;
         this.audioStream = null;
         this.isRecording = false;
+
+        // Generate unique client ID to prevent hearing own audio
+        this.clientId = 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         this.isConnected = false;
         this.participants = 0;
 
@@ -216,6 +219,12 @@ class WalkieTalkie {
                 break;
 
             case 'audio_data':
+                // Don't play our own audio back to ourselves
+                if (data.clientId && data.clientId === this.clientId) {
+                    // console.log('Ignoring own audio message');
+                    break;
+                }
+
                 if (data.format === 'encoded') {
                     this.playEncodedAudio(data.data, data.mimeType || 'audio/webm');
                 } else if (data.format === 'pcm16') {
@@ -413,7 +422,9 @@ class WalkieTalkie {
                 data: base64Audio,
                 format: 'pcm16',
                 sampleRate: this.audioContext.sampleRate,
-                channels: 1
+                channels: 1,
+                clientId: this.clientId,
+                excludeSender: true // Hint for server to not echo back
             };
 
             // console.log('Sending audio_data:', {
