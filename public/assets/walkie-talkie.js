@@ -16,6 +16,17 @@ class WalkieTalkie {
         this.isConnected = false;
         this.participants = 0;
 
+        // Track notification rate limiting (1 hour = 3600000ms)
+        this.lastNotificationTime = 0;
+        this.notificationCooldown = 3600000; // 1 hour
+
+        // Track when we're speaking to prevent self-notifications
+        this.isSpeaking = false;
+
+        // Track app visibility for notifications
+        this.isAppActive = true;
+        this.setupVisibilityTracking();
+
         this.eventListeners = {};
         this.audioChunks = [];
         this.playbackQueue = [];
@@ -67,6 +78,33 @@ class WalkieTalkie {
         if (this.eventListeners[event]) {
             this.eventListeners[event].forEach(callback => callback(data));
         }
+    }
+
+    setupVisibilityTracking() {
+        // Track when the app becomes visible/hidden
+        document.addEventListener('visibilitychange', () => {
+            this.isAppActive = !document.hidden;
+
+            // Notify service worker of app state change
+            this.sendToServiceWorker('APP_STATE_CHANGED', {
+                isActive: this.isAppActive
+            });
+        });
+
+        // Also track focus/blur events
+        window.addEventListener('focus', () => {
+            this.isAppActive = true;
+            this.sendToServiceWorker('APP_STATE_CHANGED', {
+                isActive: true
+            });
+        });
+
+        window.addEventListener('blur', () => {
+            this.isAppActive = false;
+            this.sendToServiceWorker('APP_STATE_CHANGED', {
+                isActive: false
+            });
+        });
     }
 
     setupUI() {
@@ -238,11 +276,17 @@ class WalkieTalkie {
                 this.updateSpeakingIndicator(data.speaking);
                 this.emit('speaking', { speaking: data.speaking });
 
-                // Notify service worker when someone starts speaking
-                if (data.speaking) {
-                    this.sendToServiceWorker('TRANSMISSION_STARTED', {
-                        channel: this.channel
-                    });
+                // Notify service worker when someone else starts speaking (not ourselves)
+                // Only send notifications when app is in background or not active
+                if (data.speaking && !this.isSpeaking && !this.isAppActive) {
+                    // Rate limit notifications to once per hour
+                    const now = Date.now();
+                    if (now - this.lastNotificationTime > this.notificationCooldown) {
+                        this.sendToServiceWorker('TRANSMISSION_STARTED', {
+                            channel: this.channel
+                        });
+                        this.lastNotificationTime = now;
+                    }
                 }
                 break;
         }
@@ -352,11 +396,13 @@ class WalkieTalkie {
             await this.setupSimplePCMStreaming();
 
             this.isRecording = true;
+            this.isSpeaking = true;
             this.pttButton.classList.add('recording');
 
             this.ws.send(JSON.stringify({
                 type: 'push_to_talk_start',
-                channel: this.channel
+                channel: this.channel,
+                clientId: this.clientId
             }));
 
             console.log('Started simple PCM audio streaming');
@@ -562,6 +608,7 @@ class WalkieTalkie {
         if (!this.isRecording) return;
 
         this.isRecording = false;
+        this.isSpeaking = false;
         this.pttButton.classList.remove('recording');
 
         // Disconnect script processor
@@ -589,7 +636,8 @@ class WalkieTalkie {
 
         this.ws.send(JSON.stringify({
             type: 'push_to_talk_end',
-            channel: this.channel
+            channel: this.channel,
+            clientId: this.clientId
         }));
 
         console.log('Stopped simple PCM streaming');
@@ -647,7 +695,9 @@ class WalkieTalkie {
                     data: base64Audio,
                     format: 'encoded', // Mark as pre-encoded audio
                     mimeType: audioBlob.type,
-                    size: audioBlob.size
+                    size: audioBlob.size,
+                    clientId: this.clientId,
+                    excludeSender: true
                 }));
 
                 console.log('Sent encoded audio chunk:', audioBlob.type, audioBlob.size, 'bytes');
