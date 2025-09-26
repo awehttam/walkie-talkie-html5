@@ -1,12 +1,11 @@
-const CACHE_NAME = 'walkie-talkie-v2';
+const CACHE_NAME = 'walkie-talkie-v3';
 const urlsToCache = [
   '/',
   '/embed.php',
   '/assets/style.css',
   '/assets/embed.css',
   '/assets/walkie-talkie.js',
-  '/assets/icon-192.png',
-  '/assets/icon-512.png'
+  '/assets/walkie-talkie.svg',
 ];
 
 // Store last active channel and app state
