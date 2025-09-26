@@ -341,9 +341,12 @@ class WalkieTalkie {
     }
 
     async setupWebAudioStreaming() {
-        // Create audio context if not exists, but don't force sample rate
+        // Create audio context with enforced sample rate for consistency
         if (!this.audioContext) {
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            // Force 44.1kHz sample rate for consistency across browsers
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            this.audioContext = new AudioContextClass({ sampleRate: 44100 });
+            console.log('Audio context created with sample rate:', this.audioContext.sampleRate);
         }
 
         // Resume audio context if suspended
@@ -390,7 +393,8 @@ class WalkieTalkie {
         this.microphoneSource = this.audioContext.createMediaStreamSource(this.audioStream);
 
         // Create script processor for audio processing (legacy fallback)
-        this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
+        // Use power-of-2 buffer size that works well with 44.1kHz
+        this.scriptProcessor = this.audioContext.createScriptProcessor(2048, 1, 1);
 
         this.scriptProcessor.onaudioprocess = (event) => {
             if (!this.isRecording) return;
@@ -401,11 +405,14 @@ class WalkieTalkie {
             // Validate audio data
             if (!audioData || audioData.length === 0) return;
 
+            // Apply noise gate and gain normalization
+            const processedAudio = this.processAudioQuality(audioData);
+
             // Convert Float32Array to PCM16 with improved precision
-            const pcm16 = new Int16Array(audioData.length);
-            for (let i = 0; i < audioData.length; i++) {
+            const pcm16 = new Int16Array(processedAudio.length);
+            for (let i = 0; i < processedAudio.length; i++) {
                 // Clamp input to valid range first
-                const sample = Math.max(-1.0, Math.min(1.0, audioData[i]));
+                const sample = Math.max(-1.0, Math.min(1.0, processedAudio[i]));
                 // Convert to PCM16 with proper rounding
                 pcm16[i] = Math.round(sample * 32767);
             }
@@ -457,6 +464,35 @@ class WalkieTalkie {
         console.log('Stopped audio streaming');
     }
 
+    processAudioQuality(audioData) {
+        // Simple noise gate and normalization
+        const processedData = new Float32Array(audioData.length);
+        const noiseGateThreshold = 0.01; // Adjust based on testing
+        let maxAmplitude = 0;
+
+        // Find peak amplitude for normalization
+        for (let i = 0; i < audioData.length; i++) {
+            const abs = Math.abs(audioData[i]);
+            if (abs > maxAmplitude) {
+                maxAmplitude = abs;
+            }
+        }
+
+        // Apply noise gate and normalize
+        const normalizationGain = maxAmplitude > 0 ? Math.min(1.0, 0.8 / maxAmplitude) : 1.0;
+
+        for (let i = 0; i < audioData.length; i++) {
+            const sample = audioData[i];
+            if (Math.abs(sample) < noiseGateThreshold) {
+                processedData[i] = 0; // Gate out noise
+            } else {
+                processedData[i] = sample * normalizationGain;
+            }
+        }
+
+        return processedData;
+    }
+
     sendPCMAudio(pcmData) {
         try {
             // Validate PCM data before sending
@@ -469,15 +505,21 @@ class WalkieTalkie {
             const uint8Array = new Uint8Array(pcmData.buffer);
             const base64Audio = btoa(String.fromCharCode.apply(null, uint8Array));
 
-            // Use actual audio context sample rate
-            const actualSampleRate = this.audioContext ? this.audioContext.sampleRate : 44100;
+            // Enforce consistent sample rate (44.1kHz)
+            const STANDARD_SAMPLE_RATE = 44100;
+            const actualSampleRate = this.audioContext ? this.audioContext.sampleRate : STANDARD_SAMPLE_RATE;
+
+            // Warn if sample rate doesn't match our standard
+            if (actualSampleRate !== STANDARD_SAMPLE_RATE) {
+                console.warn(`Sample rate mismatch: expected ${STANDARD_SAMPLE_RATE}, got ${actualSampleRate}`);
+            }
 
             this.ws.send(JSON.stringify({
                 type: 'audio_data',
                 channel: this.channel,
                 data: base64Audio,
                 format: 'pcm16',
-                sampleRate: actualSampleRate,
+                sampleRate: STANDARD_SAMPLE_RATE, // Always send standard rate
                 channels: 1
             }));
         } catch (error) {
@@ -551,9 +593,15 @@ class WalkieTalkie {
                 float32Array[i] = Math.max(-1, Math.min(1, pcm16[i] / 32768.0));
             }
 
-            // Validate sample rate and channels
-            const validatedSampleRate = Math.max(8000, Math.min(96000, sampleRate || 44100));
+            // Enforce standard sample rate for consistency
+            const STANDARD_SAMPLE_RATE = 44100;
+            const validatedSampleRate = STANDARD_SAMPLE_RATE; // Always use 44.1kHz
             const validatedChannels = Math.max(1, Math.min(2, channels || 1));
+
+            // Warn if incoming sample rate doesn't match our standard
+            if (sampleRate && sampleRate !== STANDARD_SAMPLE_RATE) {
+                console.warn(`Incoming sample rate mismatch: expected ${STANDARD_SAMPLE_RATE}, got ${sampleRate}`);
+            }
 
             // Calculate samples per channel
             const samplesPerChannel = Math.floor(float32Array.length / validatedChannels);
@@ -563,18 +611,48 @@ class WalkieTalkie {
                 return;
             }
 
-            // Create audio buffer
-            const audioBuffer = this.audioContext.createBuffer(validatedChannels, samplesPerChannel, validatedSampleRate);
+            // Create audio buffer with resampling if needed
+            let audioBuffer;
+            if (sampleRate && sampleRate !== STANDARD_SAMPLE_RATE) {
+                // Resample to standard rate if incoming rate is different
+                const resampleRatio = STANDARD_SAMPLE_RATE / sampleRate;
+                const resampledLength = Math.floor(samplesPerChannel * resampleRatio);
+                audioBuffer = this.audioContext.createBuffer(validatedChannels, resampledLength, STANDARD_SAMPLE_RATE);
 
-            // Fill audio buffer channels
-            if (validatedChannels === 1) {
-                audioBuffer.getChannelData(0).set(float32Array.subarray(0, samplesPerChannel));
-            } else {
-                // For stereo, deinterleave if needed
+                // Simple linear interpolation resampling
                 for (let channel = 0; channel < validatedChannels; channel++) {
                     const channelData = audioBuffer.getChannelData(channel);
-                    for (let i = 0; i < samplesPerChannel; i++) {
-                        channelData[i] = float32Array[i * validatedChannels + channel] || 0;
+                    for (let i = 0; i < resampledLength; i++) {
+                        const srcIndex = i / resampleRatio;
+                        const srcIndexFloor = Math.floor(srcIndex);
+                        const srcIndexCeil = Math.min(srcIndexFloor + 1, samplesPerChannel - 1);
+                        const fraction = srcIndex - srcIndexFloor;
+
+                        const sample1 = validatedChannels === 1 ?
+                            float32Array[srcIndexFloor] || 0 :
+                            float32Array[srcIndexFloor * validatedChannels + channel] || 0;
+                        const sample2 = validatedChannels === 1 ?
+                            float32Array[srcIndexCeil] || 0 :
+                            float32Array[srcIndexCeil * validatedChannels + channel] || 0;
+
+                        channelData[i] = sample1 + (sample2 - sample1) * fraction;
+                    }
+                }
+            } else {
+                audioBuffer = this.audioContext.createBuffer(validatedChannels, samplesPerChannel, validatedSampleRate);
+            }
+
+            // Fill audio buffer channels (only if not resampled)
+            if (!sampleRate || sampleRate === STANDARD_SAMPLE_RATE) {
+                if (validatedChannels === 1) {
+                    audioBuffer.getChannelData(0).set(float32Array.subarray(0, samplesPerChannel));
+                } else {
+                    // For stereo, deinterleave if needed
+                    for (let channel = 0; channel < validatedChannels; channel++) {
+                        const channelData = audioBuffer.getChannelData(channel);
+                        for (let i = 0; i < samplesPerChannel; i++) {
+                            channelData[i] = float32Array[i * validatedChannels + channel] || 0;
+                        }
                     }
                 }
             }

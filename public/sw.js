@@ -1,4 +1,4 @@
-const CACHE_NAME = 'walkie-talkie-v5';
+const CACHE_NAME = 'walkie-talkie-v6';
 const urlsToCache = [
   '/',
   '/embed.php',
