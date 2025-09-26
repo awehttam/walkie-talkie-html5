@@ -1,4 +1,4 @@
-const CACHE_NAME = 'walkie-talkie-v4';
+const CACHE_NAME = 'walkie-talkie-v5';
 const urlsToCache = [
   '/',
   '/embed.php',
@@ -55,6 +55,10 @@ self.addEventListener('message', (event) => {
   const { type, data } = event.data;
 
   switch (type) {
+    case 'SKIP_WAITING':
+      self.skipWaiting();
+      break;
+
     case 'APP_STATE_CHANGED':
       isAppActive = data.isActive;
       break;

@@ -420,3 +420,19 @@ input[type="range"]:focus-visible {
     outline: 2px solid #2196f3;
     outline-offset: 2px;
 }
+
+/* Service Worker Update Animation */
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+    }
+    70% {
+        transform: scale(1.02);
+        box-shadow: 0 0 0 8px rgba(76, 175, 80, 0);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+    }
+}

@@ -74,9 +74,69 @@
         let deferredPrompt;
         let installButton;
 
-        // Service Worker registration
+        // Service Worker registration with update handling
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js');
+            navigator.serviceWorker.register('sw.js')
+                .then(registration => {
+                    console.log('Service Worker registered:', registration);
+
+                    // Check for updates every time the page loads
+                    registration.update();
+
+                    // Listen for waiting service worker
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                // New service worker is available
+                                showUpdateNotification(registration);
+                            }
+                        });
+                    });
+                })
+                .catch(error => {
+                    console.error('Service Worker registration failed:', error);
+                });
+
+            // Listen for controller change (when new SW takes control)
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                console.log('Service Worker updated, reloading page');
+                window.location.reload();
+            });
+        }
+
+        function showUpdateNotification(registration) {
+            const updateButton = document.createElement('button');
+            updateButton.textContent = '🔄 Update Available';
+            updateButton.className = 'update-btn';
+            updateButton.style.cssText = `
+                position: fixed;
+                top: 10px;
+                left: 10px;
+                background: #4CAF50;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+                z-index: 1000;
+                animation: pulse 2s infinite;
+            `;
+            updateButton.addEventListener('click', () => {
+                if (registration.waiting) {
+                    registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    updateButton.remove();
+                }
+            });
+            document.body.appendChild(updateButton);
+
+            // Auto-remove after 10 seconds if not clicked
+            setTimeout(() => {
+                if (document.body.contains(updateButton)) {
+                    updateButton.remove();
+                }
+            }, 10000);
         }
 
         // PWA Install prompt handling
