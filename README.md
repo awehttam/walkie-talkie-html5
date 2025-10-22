@@ -5,7 +5,7 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
 ## Features
 
 - **Real-time Voice Communication**: Push-to-talk functionality with instant audio transmission
-- **Channel Support**: Currently supports Channel 1, with architecture ready for multiple channels
+- **Channel Support**: Currently supports multiple channels
 - **Progressive Web App**: Installable, offline-capable, responsive design
 - **Embeddable**: Can be embedded in iframes or linked directly
 - **Cross-platform**: Works on desktop and mobile devices
