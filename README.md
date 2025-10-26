@@ -9,7 +9,6 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
 - **Progressive Web App**: Installable, offline-capable, responsive design
 - **Embeddable**: Can be embedded in iframes or linked directly
 - **Cross-platform**: Works on desktop and mobile devices
-- **WebRTC Integration**: High-quality audio with noise suppression and echo cancellation
 
 ### Demonstration
 
