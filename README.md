@@ -13,8 +13,7 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
 
 ### Demonstration
 
-- A demonstration is available at: https://html5-walkie-talkie.demo.asham.ca/
-  
+- [Live Demo](https://html5-walkie-talkie.demo.asham.ca/)
 ## Installation
 
 1. **Install Dependencies**
