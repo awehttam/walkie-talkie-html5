@@ -11,6 +11,10 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
 - **Cross-platform**: Works on desktop and mobile devices
 - **WebRTC Integration**: High-quality audio with noise suppression and echo cancellation
 
+### Demonstration
+
+- A demonstration is available at: https://html5-walkie-talkie.demo.asham.ca/
+  
 ## Installation
 
 1. **Install Dependencies**
