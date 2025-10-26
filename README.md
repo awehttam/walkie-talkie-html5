@@ -21,7 +21,14 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
    composer install
    ```
 
-2. **Start the WebSocket Server**
+2. **Configure Environment (Optional)**
+   Copy `.env.example` to `.env` and customize as needed:
+   ```bash
+   cp .env.example .env
+   ```
+   See [Production Deployment](#production-deployment) section for details on configuration options.
+
+3. **Start the WebSocket Server**
    ```bash
    # Start as daemon (recommended for production)
    php server.php start
@@ -39,7 +46,7 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
    php server.php status   # Check status
    ```
 
-3. **Serve the Web Files**
+4. **Serve the Web Files**
    Set up a web server pointing to the `public/` directory. For development:
    ```bash
    cd public
@@ -144,12 +151,31 @@ For production environments, set up the WebSocket server to run automatically:
    - PID file: `walkie-talkie.pid`
 
 3. **Environment Configuration**:
-   Create a `.env` file to customize settings:
+   Create a `.env` file to customize settings (or copy `.env.example`):
    ```env
-   WEBSOCKET_HOST=0.0.0.0
-   WEBSOCKET_PORT=8080
+   # Server listening configuration (where the server binds)
+   WEBSOCKET_HOST=0.0.0.0      # IP address the server listens on
+   WEBSOCKET_PORT=8080          # Port the server listens on
+
+   # Client connection URL (what browsers use to connect)
+   WEBSOCKET_URL=ws://localhost:8080
+
+   # Optional settings
    DEBUG=false
    ```
+
+   **Important**: The distinction between server and client settings:
+   - `WEBSOCKET_HOST` and `WEBSOCKET_PORT`: Define where the WebSocket server **listens** for connections
+     - Use `0.0.0.0` to listen on all network interfaces (recommended for production)
+     - Use `127.0.0.1` to listen only on localhost (more secure for development)
+   - `WEBSOCKET_URL`: Defines the actual URL that client browsers use to **connect** to the server
+     - This is embedded in the web interface and used by JavaScript to establish connections
+     - Can differ from the server settings when using proxies, load balancers, or public domains
+     - Use `ws://` for development or `wss://` for secure production connections
+     - Examples:
+       - Local development: `ws://localhost:8080`
+       - Behind proxy: `wss://your-domain.com/ws`
+       - Public IP: `ws://203.0.113.45:8080`
 
 ## Development
 
