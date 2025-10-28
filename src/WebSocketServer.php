@@ -48,10 +48,32 @@ class WebSocketServer implements MessageComponentInterface
     {
         try {
             $dbPath = __DIR__ . '/../data/walkie-talkie.db';
+            $dbAbsolutePath = realpath(__DIR__ . '/../data');
+
+            echo "Initializing database...\n";
+            echo "Database path: {$dbPath}\n";
+            echo "Absolute data directory: {$dbAbsolutePath}\n";
+
+            // Check if data directory exists
+            if (!is_dir(__DIR__ . '/../data')) {
+                echo "ERROR: data/ directory does not exist!\n";
+                $this->db = null;
+                return;
+            }
+
+            // Check if data directory is writable
+            if (!is_writable(__DIR__ . '/../data')) {
+                echo "ERROR: data/ directory is not writable!\n";
+                $this->db = null;
+                return;
+            }
+
             $this->db = new PDO('sqlite:' . $dbPath);
+            echo "PDO connection established\n";
 
             // Enable WAL mode for better concurrent access
             $this->db->exec('PRAGMA journal_mode=WAL');
+            echo "WAL mode enabled\n";
 
             // Set busy timeout to 5 seconds to handle lock contention
             $this->db->exec('PRAGMA busy_timeout=5000');
@@ -71,17 +93,30 @@ class WebSocketServer implements MessageComponentInterface
                     timestamp INTEGER NOT NULL
                 )
             ');
+            echo "Table created\n";
 
             // Create index for efficient queries
             $this->db->exec('
                 CREATE INDEX IF NOT EXISTS idx_channel_timestamp
                 ON message_history(channel, timestamp DESC)
             ');
+            echo "Index created\n";
+
+            // Verify database file was created
+            if (file_exists($dbPath)) {
+                echo "Database file confirmed at: {$dbPath}\n";
+            } else {
+                echo "WARNING: Database file not found at expected location!\n";
+            }
 
             echo "Database initialized successfully\n";
         } catch (PDOException $e) {
             echo "Database initialization failed: " . $e->getMessage() . "\n";
+            echo "Stack trace: " . $e->getTraceAsString() . "\n";
             // Continue without database functionality
+            $this->db = null;
+        } catch (Exception $e) {
+            echo "Unexpected error during database initialization: " . $e->getMessage() . "\n";
             $this->db = null;
         }
     }
