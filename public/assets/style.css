@@ -436,3 +436,203 @@ input[type="range"]:focus-visible {
         box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
     }
 }
+
+/* Message History Panel */
+.history-panel {
+    margin: 20px auto;
+    max-width: 600px;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 15px;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    overflow: hidden;
+}
+
+.history-panel.collapsed {
+    max-height: 60px;
+}
+
+.history-panel:not(.collapsed) {
+    max-height: 500px;
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.history-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: white;
+}
+
+.history-controls {
+    display: flex;
+    gap: 10px;
+}
+
+.play-all-btn,
+.history-toggle-btn {
+    background: rgba(33, 150, 243, 0.8);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.play-all-btn:hover,
+.history-toggle-btn:hover {
+    background: rgba(33, 150, 243, 1);
+    transform: translateY(-1px);
+}
+
+.play-all-btn:active,
+.history-toggle-btn:active {
+    transform: translateY(0);
+}
+
+.history-list {
+    max-height: 400px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 5px;
+}
+
+.history-panel.collapsed .history-list {
+    display: none;
+}
+
+.history-empty {
+    color: rgba(255, 255, 255, 0.6);
+    text-align: center;
+    padding: 20px;
+    font-style: italic;
+}
+
+.history-message {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s;
+}
+
+.history-message:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(33, 150, 243, 0.5);
+}
+
+.history-message.playing {
+    background: rgba(33, 150, 243, 0.3);
+    border-color: rgba(33, 150, 243, 0.8);
+    box-shadow: 0 0 10px rgba(33, 150, 243, 0.5);
+}
+
+.history-message-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.history-user {
+    color: rgba(33, 150, 243, 1);
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.history-timestamp {
+    color: rgba(0, 0, 0, 0.7);
+    font-size: 12px;
+}
+
+.history-duration {
+    color: rgba(0, 0, 0, 0.8);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.history-play-btn {
+    background: rgba(76, 175, 80, 0.8);
+    color: white;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.history-play-btn:hover {
+    background: rgba(76, 175, 80, 1);
+    transform: scale(1.1);
+}
+
+.history-play-btn:active {
+    transform: scale(0.95);
+}
+
+.history-play-btn.playing {
+    background: rgba(244, 67, 54, 0.8);
+}
+
+.history-play-btn.playing:hover {
+    background: rgba(244, 67, 54, 1);
+}
+
+/* Scrollbar styling for history list */
+.history-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.history-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+    background: rgba(33, 150, 243, 0.5);
+    border-radius: 3px;
+}
+
+.history-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(33, 150, 243, 0.8);
+}
+
+/* Responsive adjustments for history panel */
+@media (max-width: 768px) {
+    .history-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .history-controls {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .history-message-info {
+        font-size: 12px;
+    }
+
+    .history-user {
+        font-size: 13px;
+    }
+}

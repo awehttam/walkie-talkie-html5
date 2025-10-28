@@ -3,3 +3,13 @@ composer.lock
 .idea/
 .env
 .claude/
+
+# SQLite database files
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Server runtime files
+walkie-talkie.log
+walkie-talkie.pid

@@ -5,7 +5,11 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
 ## Features
 
 - **Real-time Voice Communication**: Push-to-talk functionality with instant audio transmission
-- **Channel Support**: Currently supports multiple channels
+- **Message History**: Automatic recording and playback of recent transmissions
+  - Configurable retention (message count and age limits)
+  - Individual and sequential playback controls
+  - Visual history panel with timestamps and user info
+- **Channel Support**: Multiple channels with isolated message histories
 - **Progressive Web App**: Installable, offline-capable, responsive design
 - **Embeddable**: Can be embedded in iframes or linked directly
 - **Cross-platform**: Works on desktop and mobile devices
@@ -79,7 +83,9 @@ Embed in an iframe:
 ### Backend Components
 - **WebSocket Server** (`src/WebSocketServer.php`): Handles real-time communication
 - **ReactPHP**: Powers the WebSocket server
-- **Audio Streaming**: Base64-encoded WebM audio chunks
+- **Audio Streaming**: Base64-encoded PCM16 audio chunks
+- **Message History**: SQLite database with WAL mode for concurrent access
+- **Automatic Cleanup**: Age-based and count-based message retention
 
 ### Frontend Components
 - **PWA Features**: Service worker, manifest, offline support
@@ -100,18 +106,22 @@ walkie-talkie/
 │       └── walkie-talkie.js # Core JavaScript
 ├── src/
 │   └── WebSocketServer.php # WebSocket server implementation
+├── data/
+│   └── walkie-talkie.db   # SQLite database (auto-created)
 ├── server.php             # Server startup script
 ├── composer.json          # PHP dependencies
-└── README.md             # This file
+├── .env.example           # Environment configuration template
+└── README.md              # This file
 ```
 
 ## How It Works
 
-1. **Connection**: Users connect to the WebSocket server and join Channel 1
+1. **Connection**: Users connect to the WebSocket server and join a channel
 2. **Push-to-Talk**: Hold the microphone button to start recording
-3. **Audio Transmission**: Audio is captured, encoded as WebM, converted to base64, and sent via WebSocket
+3. **Audio Transmission**: Audio is captured, encoded as PCM16, converted to base64, and sent via WebSocket
 4. **Broadcasting**: Server broadcasts audio to all channel participants except the sender
-5. **Playback**: Recipients decode and play the audio instantly
+5. **Message Storage**: Complete transmissions are saved to SQLite database with retention policies
+6. **Playback**: Recipients decode and play the audio instantly, with access to message history
 
 ## Browser Support
 
@@ -159,6 +169,10 @@ For production environments, set up the WebSocket server to run automatically:
    # Client connection URL (what browsers use to connect)
    WEBSOCKET_URL=ws://localhost:8080
 
+   # Message History Configuration
+   MESSAGE_HISTORY_MAX_COUNT=10    # Maximum messages per channel
+   MESSAGE_HISTORY_MAX_AGE=300     # Maximum age in seconds (5 minutes)
+
    # Optional settings
    DEBUG=false
    ```
@@ -176,6 +190,15 @@ For production environments, set up the WebSocket server to run automatically:
        - Behind proxy: `wss://your-domain.com/ws`
        - Public IP: `ws://203.0.113.45:8080`
 
+   **Message History Configuration**:
+   - `MESSAGE_HISTORY_MAX_COUNT`: Maximum number of messages to keep per channel (default: 10)
+   - `MESSAGE_HISTORY_MAX_AGE`: Maximum message age in seconds (default: 300 = 5 minutes)
+   - Messages are deleted when EITHER limit is exceeded
+   - Examples:
+     - Short-term: `MESSAGE_HISTORY_MAX_COUNT=5` and `MESSAGE_HISTORY_MAX_AGE=60` (1 minute)
+     - Long-term: `MESSAGE_HISTORY_MAX_COUNT=100` and `MESSAGE_HISTORY_MAX_AGE=86400` (24 hours)
+   - Database stored in `data/walkie-talkie.db` (auto-created)
+
 ## Development
 
 ### Adding New Channels
@@ -186,8 +209,9 @@ For production environments, set up the WebSocket server to run automatically:
 ### Extending Features
 - **User authentication**: Add login system
 - **Channel management**: Create/join/leave channels
-- **Audio recording**: Save conversations
+- **Per-channel configuration**: Different retention settings per channel
 - **Video support**: Add webcam functionality
+- **Export functionality**: Download message history
 
 ## Troubleshooting
 
@@ -195,6 +219,8 @@ For production environments, set up the WebSocket server to run automatically:
 **WebSocket connection failed**: Check if server.php is running on port 8080
 **No audio playback**: Verify browser autoplay policies and volume settings
 **Embed not loading**: Check CORS headers and iframe permissions
+**Message history not saving**: Ensure `data/` directory exists and is writable
+**Database locked errors**: WAL mode should prevent this, but check file permissions on `data/` directory
 
 ## License
 

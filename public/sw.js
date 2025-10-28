@@ -1,7 +1,6 @@
-const CACHE_NAME = 'walkie-talkie-v15';
+const CACHE_NAME = 'walkie-talkie-v17';
 const urlsToCache = [
-  '/',
-  '/embed.php',
+  // Don't cache PHP files - always fetch fresh
   '/assets/style.css',
   '/assets/embed.css',
   '/assets/walkie-talkie.js',
@@ -24,6 +23,12 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Never cache HTML files - always fetch fresh
+  if (event.request.url.endsWith('.php') || event.request.url.endsWith('/') || event.request.url.includes('index.php')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
