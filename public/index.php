@@ -17,6 +17,12 @@ header("Pragma: no-cache");
     <link rel="apple-touch-icon" sizes="192x192" href="assets/icon-192.png">
 </head>
 <body>
+<?php
+// Include custom header template if it exists
+if (file_exists(__DIR__ . '/../templates/header.php')) {
+    include __DIR__ . '/../templates/header.php';
+}
+?>
     <div id="app">
         <header class="header">
             <h1>🗣️ Walkie Talkie</h1>
@@ -232,5 +238,11 @@ header("Pragma: no-cache");
             window.history.replaceState({}, '', newUrl);
         });
     </script>
+<?php
+// Include custom footer template if it exists
+if (file_exists(__DIR__ . '/../templates/footer.php')) {
+    include __DIR__ . '/../templates/footer.php';
+}
+?>
 </body>
 </html>

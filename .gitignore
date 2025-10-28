@@ -13,3 +13,7 @@ data/
 # Server runtime files
 walkie-talkie.log
 walkie-talkie.pid
+
+# Custom templates
+templates/header.php
+templates/footer.php

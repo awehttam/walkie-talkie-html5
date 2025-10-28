@@ -228,6 +228,32 @@ For production environments, set up the WebSocket server to run automatically:
      - Long-term: `MESSAGE_HISTORY_MAX_COUNT=100` and `MESSAGE_HISTORY_MAX_AGE=86400` (24 hours)
    - Database stored in `data/walkie-talkie.db` (auto-created)
 
+## Customization
+
+### Custom Templates
+
+You can inject custom HTML into the header and footer of all pages:
+
+1. **Create template files:**
+   ```bash
+   # Copy example templates
+   cp templates/header.php.example templates/header.php
+   cp templates/footer.php.example templates/footer.php
+   ```
+
+2. **Customize the templates:**
+   - `templates/header.php` - Included right after `</head>` (top of body)
+   - `templates/footer.php` - Included right before `</body>` (bottom of body)
+
+3. **Example use cases:**
+   - Analytics (Google Analytics, Plausible, etc.)
+   - Chat widgets (Intercom, Drift, etc.)
+   - Custom banners or notifications
+   - Additional tracking scripts
+   - Custom CSS or JavaScript
+
+**Note:** These files are excluded from git, so they won't be overwritten during updates.
+
 ## Development
 
 ### Adding New Channels

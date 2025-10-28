@@ -23,6 +23,12 @@ $height = $_GET['height'] ?? '300px';
     </style>
 </head>
 <body class="embed-mode theme-<?php echo htmlspecialchars($theme); ?>">
+<?php
+// Include custom header template if it exists
+if (file_exists(__DIR__ . '/../templates/header.php')) {
+    include __DIR__ . '/../templates/header.php';
+}
+?>
     <div id="embed-app">
         <div class="embed-header">
             <span class="channel-badge">Ch. <?php echo htmlspecialchars($channel); ?></span>
@@ -101,5 +107,11 @@ $height = $_GET['height'] ?? '300px';
             });
         }
     </script>
+<?php
+// Include custom footer template if it exists
+if (file_exists(__DIR__ . '/../templates/footer.php')) {
+    include __DIR__ . '/../templates/footer.php';
+}
+?>
 </body>
 </html>

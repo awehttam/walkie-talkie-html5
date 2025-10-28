@@ -1,0 +1,25 @@
+<?php
+/**
+ * Custom Header Template
+ *
+ * This file is included right after the </head> tag.
+ * Use it to add custom scripts, analytics, or other HTML that should appear
+ * at the beginning of the <body> tag.
+ *
+ * To use: Copy this file to templates/header.php and customize as needed.
+ */
+?>
+
+<!-- Example: Google Analytics -->
+<!-- <script async src="https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID"></script> -->
+<!-- <script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'GA_MEASUREMENT_ID');
+</script> -->
+
+<!-- Example: Custom notification banner -->
+<!-- <div style="background: #ffc107; padding: 10px; text-align: center;">
+  <strong>Notice:</strong> This is a custom header message.
+</div> -->

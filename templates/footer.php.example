@@ -1,0 +1,26 @@
+<?php
+/**
+ * Custom Footer Template
+ *
+ * This file is included right before the </body> tag.
+ * Use it to add custom scripts, chat widgets, or other HTML that should appear
+ * at the end of the page.
+ *
+ * To use: Copy this file to templates/footer.php and customize as needed.
+ */
+?>
+
+<!-- Example: Chat widget -->
+<!-- <script>
+  // Add your chat widget code here
+</script> -->
+
+<!-- Example: Custom footer content -->
+<!-- <div style="text-align: center; padding: 20px; background: #f5f5f5;">
+  <p>Custom footer content goes here</p>
+</div> -->
+
+<!-- Example: Additional tracking or analytics -->
+<!-- <script>
+  // Add custom tracking code here
+</script> -->
