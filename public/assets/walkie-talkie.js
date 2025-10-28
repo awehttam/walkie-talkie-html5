@@ -32,6 +32,14 @@ class WalkieTalkie {
         this.playbackQueue = [];
         this.isPlaying = false;
         this.courtesyBeepEnabled = true;
+
+        // Message history
+        this.messageHistory = [];
+        this.isPlayingHistory = false;
+        this.currentHistoryIndex = -1;
+        this.currentPlayingHistoryIndex = -1;
+        this.singlePlaybackTimeout = null;
+        this.currentAudioSource = null;
     }
 
     async init() {
@@ -193,6 +201,25 @@ class WalkieTalkie {
                 }
             });
         }
+
+        // Setup history panel
+        const historyToggle = document.getElementById('history-toggle');
+        const historyPanel = document.getElementById('history-panel');
+        const playAllBtn = document.getElementById('play-all-btn');
+
+        if (historyToggle && historyPanel) {
+            historyToggle.addEventListener('click', () => {
+                historyPanel.classList.toggle('collapsed');
+                const isCollapsed = historyPanel.classList.contains('collapsed');
+                historyToggle.textContent = isCollapsed ? 'Show History' : 'Hide History';
+            });
+        }
+
+        if (playAllBtn) {
+            playAllBtn.addEventListener('click', () => {
+                this.playAllHistory();
+            });
+        }
     }
 
     connectWebSocket() {
@@ -288,6 +315,18 @@ class WalkieTalkie {
                         this.lastNotificationTime = now;
                     }
                 }
+
+                // When someone stops speaking, refresh the message history
+                if (!data.speaking) {
+                    // Small delay to allow server to save the message
+                    setTimeout(() => {
+                        this.requestHistory();
+                    }, 500);
+                }
+                break;
+
+            case 'history_response':
+                this.handleHistoryResponse(data.messages);
                 break;
         }
     }
@@ -341,6 +380,9 @@ class WalkieTalkie {
                 type: 'join_channel',
                 channel: this.channel
             }));
+
+            // Request message history for this channel
+            this.requestHistory();
 
             // Also notify service worker of current channel
             this.sendToServiceWorker('CHANNEL_CHANGED', { channel: this.channel });
@@ -817,6 +859,16 @@ class WalkieTalkie {
             gainNode.connect(this.audioContext.destination);
             source.start();
 
+            // Store the source so we can stop it later
+            this.currentAudioSource = source;
+
+            // Clear the reference when it ends naturally
+            source.onended = () => {
+                if (this.currentAudioSource === source) {
+                    this.currentAudioSource = null;
+                }
+            };
+
             console.log('Playing simple PCM audio');
 
         } catch (error) {
@@ -1025,6 +1077,243 @@ class WalkieTalkie {
         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
             navigator.serviceWorker.controller.postMessage({ type, data });
         }
+    }
+
+    // Message History Methods
+
+    requestHistory() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: 'history_request',
+                channel: this.channel
+            }));
+            console.log('Requested history for channel', this.channel);
+        }
+    }
+
+    handleHistoryResponse(messages) {
+        this.messageHistory = messages || [];
+        console.log('Received', this.messageHistory.length, 'historical messages');
+        this.updateHistoryPanel();
+    }
+
+    updateHistoryPanel() {
+        const historyList = document.getElementById('history-list');
+        if (!historyList) return;
+
+        historyList.innerHTML = '';
+
+        if (this.messageHistory.length === 0) {
+            historyList.innerHTML = '<div class="history-empty">No messages yet</div>';
+            return;
+        }
+
+        this.messageHistory.forEach((message, index) => {
+            const messageEl = document.createElement('div');
+            messageEl.className = 'history-message';
+            messageEl.dataset.index = index;
+
+            const timestamp = this.formatTimestamp(parseInt(message.timestamp));
+            const duration = this.formatDuration(parseInt(message.duration));
+            const userId = this.formatUserId(message.client_id);
+
+            messageEl.innerHTML = `
+                <div class="history-message-info">
+                    <span class="history-user">${userId}</span>
+                    <span class="history-timestamp">${timestamp}</span>
+                    <span class="history-duration">${duration}</span>
+                </div>
+                <button class="history-play-btn" data-index="${index}">
+                    <svg width="12" height="12" viewBox="0 0 12 12">
+                        <path d="M2 1 L2 11 L10 6 Z" fill="currentColor"/>
+                    </svg>
+                </button>
+            `;
+
+            const playBtn = messageEl.querySelector('.history-play-btn');
+            playBtn.addEventListener('click', () => this.playHistoryMessage(index));
+
+            historyList.appendChild(messageEl);
+        });
+    }
+
+    formatTimestamp(timestamp) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+
+        // Show time for older messages
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    formatDuration(durationMs) {
+        const seconds = Math.round(durationMs / 1000 * 10) / 10;
+        return `${seconds}s`;
+    }
+
+    formatUserId(clientId) {
+        // Extract last 4 characters of client ID
+        const shortId = clientId.slice(-4);
+        return `User #${shortId}`;
+    }
+
+    playHistoryMessage(index) {
+        if (index < 0 || index >= this.messageHistory.length) return;
+
+        // If this message is already playing, stop it
+        if (this.currentPlayingHistoryIndex === index) {
+            this.stopSingleHistoryPlayback(index);
+            return;
+        }
+
+        // Stop any currently playing message
+        if (this.currentPlayingHistoryIndex !== -1) {
+            this.stopSingleHistoryPlayback(this.currentPlayingHistoryIndex);
+        }
+
+        const message = this.messageHistory[index];
+        console.log('Playing history message', index);
+
+        // Mark as playing
+        this.currentPlayingHistoryIndex = index;
+
+        // Highlight the playing message
+        this.highlightHistoryMessage(index);
+
+        // Update button to pause icon
+        this.updatePlayButtonIcon(index, 'pause');
+
+        // Play the audio
+        this.playPCMAudio(
+            message.audio_data,
+            parseInt(message.sample_rate),
+            1
+        );
+
+        // Calculate when audio will finish and auto-reset button
+        const duration = parseInt(message.duration);
+        if (this.singlePlaybackTimeout) {
+            clearTimeout(this.singlePlaybackTimeout);
+        }
+        this.singlePlaybackTimeout = setTimeout(() => {
+            this.stopSingleHistoryPlayback(index);
+        }, duration);
+    }
+
+    stopSingleHistoryPlayback(index) {
+        // Stop the audio source if it's playing
+        if (this.currentAudioSource) {
+            try {
+                this.currentAudioSource.stop();
+            } catch (e) {
+                // Already stopped
+            }
+            this.currentAudioSource = null;
+        }
+
+        this.currentPlayingHistoryIndex = -1;
+        this.updatePlayButtonIcon(index, 'play');
+        this.removeHistoryHighlight();
+        if (this.singlePlaybackTimeout) {
+            clearTimeout(this.singlePlaybackTimeout);
+            this.singlePlaybackTimeout = null;
+        }
+    }
+
+    updatePlayButtonIcon(index, state) {
+        const messageEl = document.querySelector(`[data-index="${index}"]`);
+        if (!messageEl) return;
+
+        const playBtn = messageEl.querySelector('.history-play-btn');
+        if (!playBtn) return;
+
+        if (state === 'pause') {
+            // Stop icon (square)
+            playBtn.innerHTML = `
+                <svg width="12" height="12" viewBox="0 0 12 12">
+                    <rect x="2" y="2" width="8" height="8" fill="currentColor"/>
+                </svg>
+            `;
+            playBtn.classList.add('playing');
+        } else {
+            // Play icon (triangle)
+            playBtn.innerHTML = `
+                <svg width="12" height="12" viewBox="0 0 12 12">
+                    <path d="M2 1 L2 11 L10 6 Z" fill="currentColor"/>
+                </svg>
+            `;
+            playBtn.classList.remove('playing');
+        }
+    }
+
+    playAllHistory() {
+        if (this.messageHistory.length === 0) {
+            console.log('No messages to play');
+            return;
+        }
+
+        if (this.isPlayingHistory) {
+            console.log('Already playing history');
+            return;
+        }
+
+        console.log('Playing all history messages');
+        this.isPlayingHistory = true;
+        this.currentHistoryIndex = 0;
+        this.playNextHistoryMessage();
+    }
+
+    playNextHistoryMessage() {
+        if (!this.isPlayingHistory || this.currentHistoryIndex >= this.messageHistory.length) {
+            this.stopHistoryPlayback();
+            return;
+        }
+
+        const message = this.messageHistory[this.currentHistoryIndex];
+        console.log('Playing history message', this.currentHistoryIndex);
+
+        // Highlight current message
+        this.highlightHistoryMessage(this.currentHistoryIndex);
+
+        // Play the audio
+        const audioData = message.audio_data;
+        const sampleRate = parseInt(message.sample_rate);
+
+        // Calculate duration to wait before playing next
+        const duration = parseInt(message.duration);
+
+        this.playPCMAudio(audioData, sampleRate, 1);
+
+        // Move to next message after this one finishes
+        setTimeout(() => {
+            this.currentHistoryIndex++;
+            this.playNextHistoryMessage();
+        }, duration + 100); // Add 100ms gap between messages
+    }
+
+    stopHistoryPlayback() {
+        this.isPlayingHistory = false;
+        this.currentHistoryIndex = -1;
+        this.removeHistoryHighlight();
+        console.log('Finished playing history');
+    }
+
+    highlightHistoryMessage(index) {
+        this.removeHistoryHighlight();
+        const messageEl = document.querySelector(`[data-index="${index}"]`);
+        if (messageEl) {
+            messageEl.classList.add('playing');
+        }
+    }
+
+    removeHistoryHighlight() {
+        const playingElements = document.querySelectorAll('.history-message.playing');
+        playingElements.forEach(el => el.classList.remove('playing'));
     }
 }
 

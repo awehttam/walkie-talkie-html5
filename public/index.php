@@ -1,3 +1,9 @@
+<?php
+// Prevent caching during development
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,7 +11,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Walkie Talkie</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="assets/style.css">
+    <link rel="stylesheet" href="assets/style.css?v=<?php echo time(); ?>">
     <meta name="theme-color" content="#2196F3">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
     <link rel="apple-touch-icon" sizes="192x192" href="assets/icon-192.png">
@@ -62,6 +68,19 @@
                 <p>Press and hold the microphone button to talk on the selected Channel</p>
                 <p>Make sure to allow microphone access when prompted</p>
             </div>
+
+            <div id="history-panel" class="history-panel">
+                <div class="history-header">
+                    <h3>Message History</h3>
+                    <div class="history-controls">
+                        <button id="play-all-btn" class="play-all-btn">Play All</button>
+                        <button id="history-toggle" class="history-toggle-btn">Hide History</button>
+                    </div>
+                </div>
+                <div id="history-list" class="history-list">
+                    <div class="history-empty">No messages yet</div>
+                </div>
+            </div>
         </main>
 
         <footer class="footer">
@@ -69,7 +88,7 @@
         </footer>
     </div>
 
-    <script src="assets/walkie-talkie.js"></script>
+    <script src="assets/walkie-talkie.js?v=<?php echo time(); ?>"></script>
     <script>
         let deferredPrompt;
         let installButton;
