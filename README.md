@@ -17,6 +17,35 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
 ### Demonstration
 
 - [Live Demo](https://html5-walkie-talkie.demo.asham.ca/)
+  - **Note**: If you don't see the message history panel, perform a hard refresh (Ctrl+Shift+R on Windows/Linux, Cmd+Shift+R on Mac) or clear your browser cache to load the latest version.
+
+## Prerequisites
+
+Before installation, ensure you have:
+
+- **PHP 8.1 or higher** with the following extensions:
+  - `pdo_sqlite` - Required for message history storage
+  - `mbstring` - For string handling
+  - `sockets` - For WebSocket server
+- **Composer** - For PHP dependency management
+
+**To check if extensions are installed:**
+```bash
+php -m | grep -E 'pdo_sqlite|mbstring|sockets'
+```
+
+**To install missing extensions:**
+```bash
+# Ubuntu/Debian
+sudo apt-get install php-sqlite3 php-mbstring
+
+# CentOS/RHEL
+sudo yum install php-pdo php-mbstring
+
+# macOS (with Homebrew)
+brew install php
+```
+
 ## Installation
 
 1. **Install Dependencies**
@@ -216,11 +245,21 @@ For production environments, set up the WebSocket server to run automatically:
 ## Troubleshooting
 
 **Microphone access denied**: Ensure HTTPS in production, allow microphone permissions
+
 **WebSocket connection failed**: Check if server.php is running on port 8080
+
 **No audio playback**: Verify browser autoplay policies and volume settings
+
 **Embed not loading**: Check CORS headers and iframe permissions
-**Message history not saving**: Ensure `data/` directory exists and is writable
+
+**Message history not saving**:
+- Ensure `pdo_sqlite` PHP extension is installed: `php -m | grep pdo_sqlite`
+- Ensure `data/` directory exists and is writable (chmod 755 or 777)
+- Check server logs: `tail -f walkie-talkie.log`
+
 **Database locked errors**: WAL mode should prevent this, but check file permissions on `data/` directory
+
+**Message history panel not visible on live demo**: Clear browser cache or perform hard refresh (Ctrl+Shift+R / Cmd+Shift+R)
 
 ## License
 
