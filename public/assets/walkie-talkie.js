@@ -146,15 +146,26 @@ class WalkieTalkie {
     }
 
     promptForScreenName() {
-        const screenName = prompt('Choose a screen name (2-20 characters, letters/numbers/underscore/hyphen):');
+        // Generate a random name to pre-populate the prompt
+        const suggestedName = this.generateRandomScreenName();
 
-        // If user cancels, generate a random screen name
-        if (!screenName) {
-            const randomName = this.generateRandomScreenName();
-            this.screenName = randomName;
+        const screenName = prompt('Choose a screen name (2-20 characters, letters/numbers/underscore/hyphen):', suggestedName);
+
+        // If user cancels, use the suggested random screen name
+        if (screenName === null) {
+            this.screenName = suggestedName;
             this.isAnonymous = true;
-            sessionStorage.setItem('anonymous_screen_name', randomName);
+            sessionStorage.setItem('anonymous_screen_name', suggestedName);
             console.log('Generated random screen name:', this.screenName);
+            return;
+        }
+
+        // If user just accepts the default (empty or whitespace), use suggested name
+        if (!screenName || !screenName.trim()) {
+            this.screenName = suggestedName;
+            this.isAnonymous = true;
+            sessionStorage.setItem('anonymous_screen_name', suggestedName);
+            console.log('Using suggested screen name:', this.screenName);
             return;
         }
 
