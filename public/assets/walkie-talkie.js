@@ -1506,6 +1506,7 @@ class WalkieTalkie {
 
         userMenu.innerHTML = `
             <span style="color: #fff; margin-right: 10px;">👤 ${this.currentUser.username}</span>
+            <button onclick="window.location.href='/passkeys.html'" style="padding: 5px 10px; margin-right: 5px; cursor: pointer;">Passkeys</button>
             <button onclick="walkieTalkie.logout()" style="padding: 5px 10px; cursor: pointer;">Logout</button>
         `;
     }

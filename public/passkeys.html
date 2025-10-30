@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Passkeys - Walkie Talkie</title>
+    <link rel="stylesheet" href="/assets/style.css">
+    <style>
+        .passkey-container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 30px;
+            background: var(--bg-color, #1a1a1a);
+            border-radius: 12px;
+        }
+
+        .passkey-container h1 {
+            color: var(--text-color, #fff);
+            margin-bottom: 10px;
+        }
+
+        .user-info {
+            color: #888;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #333;
+        }
+
+        .passkey-list {
+            margin-bottom: 30px;
+        }
+
+        .passkey-item {
+            background: #2a2a2a;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .passkey-info {
+            flex: 1;
+        }
+
+        .passkey-name {
+            color: #fff;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .passkey-meta {
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .passkey-actions button {
+            padding: 8px 15px;
+            background: #d32f2f;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .passkey-actions button:hover {
+            background: #b71c1c;
+        }
+
+        .passkey-actions button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .add-passkey-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 6px;
+            background: var(--primary-color, #4CAF50);
+            color: white;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-bottom: 15px;
+        }
+
+        .add-passkey-btn:hover {
+            background: var(--primary-hover, #45a049);
+        }
+
+        .back-btn {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid #444;
+            border-radius: 6px;
+            background: transparent;
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .back-btn:hover {
+            background: #2a2a2a;
+            border-color: #666;
+        }
+
+        .error-message, .success-message {
+            padding: 12px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .error-message {
+            background: rgba(255, 82, 82, 0.1);
+            border: 1px solid #ff5252;
+            color: #ff5252;
+        }
+
+        .success-message {
+            background: rgba(76, 175, 80, 0.1);
+            border: 1px solid #4CAF50;
+            color: #4CAF50;
+        }
+
+        .error-message.show, .success-message.show {
+            display: block;
+        }
+
+        .loading {
+            text-align: center;
+            color: #888;
+            padding: 20px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="passkey-container">
+        <h1>Manage Passkeys</h1>
+        <div class="user-info">
+            <div>Logged in as: <strong id="username">Loading...</strong></div>
+            <div>Created: <span id="created-at">...</span></div>
+        </div>
+
+        <div id="errorMessage" class="error-message"></div>
+        <div id="successMessage" class="success-message"></div>
+
+        <div class="passkey-list" id="passkeyList">
+            <div class="loading">Loading passkeys...</div>
+        </div>
+
+        <button class="add-passkey-btn" id="addPasskeyBtn">+ Add New Passkey</button>
+        <button class="back-btn" onclick="window.location.href='/'">Back to App</button>
+    </div>
+
+    <script src="/assets/auth.js"></script>
+    <script>
+        let currentUser = null;
+        let accessToken = localStorage.getItem('access_token');
+
+        async function loadPasskeys() {
+            if (!accessToken) {
+                window.location.href = '/login.html';
+                return;
+            }
+
+            try {
+                const response = await fetch('/auth/user-info.php', {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error('Failed to load user info');
+                }
+
+                currentUser = result.user;
+
+                // Update user info
+                document.getElementById('username').textContent = currentUser.username;
+                document.getElementById('created-at').textContent = new Date(currentUser.created_at).toLocaleDateString();
+
+                // Display passkeys
+                const passkeyList = document.getElementById('passkeyList');
+                if (currentUser.passkeys.length === 0) {
+                    passkeyList.innerHTML = '<div class="empty-state">No passkeys registered yet. Add your first passkey to get started!</div>';
+                } else {
+                    passkeyList.innerHTML = '';
+                    currentUser.passkeys.forEach(passkey => {
+                        const item = document.createElement('div');
+                        item.className = 'passkey-item';
+
+                        const lastUsed = passkey.last_used
+                            ? new Date(passkey.last_used).toLocaleDateString()
+                            : 'Never';
+
+                        item.innerHTML = `
+                            <div class="passkey-info">
+                                <div class="passkey-name">${escapeHtml(passkey.nickname || 'Unnamed')}</div>
+                                <div class="passkey-meta">
+                                    Added: ${new Date(passkey.created_at).toLocaleDateString()} |
+                                    Last used: ${lastUsed}
+                                </div>
+                            </div>
+                            <div class="passkey-actions">
+                                <button onclick="deletePasskey(${passkey.id})" ${currentUser.passkeys.length === 1 ? 'disabled title="Cannot delete last passkey"' : ''}>
+                                    Delete
+                                </button>
+                            </div>
+                        `;
+
+                        passkeyList.appendChild(item);
+                    });
+                }
+            } catch (error) {
+                showError('Failed to load passkeys: ' + error.message);
+            }
+        }
+
+        async function addPasskey() {
+            const nickname = prompt('Name this passkey (e.g., "Work Laptop", "iPhone"):');
+            if (!nickname) return;
+
+            try {
+                // Step 1: Get registration options
+                const optionsResponse = await fetch('/auth/passkeys.php?action=add', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ nickname })
+                });
+
+                const optionsResult = await optionsResponse.json();
+                if (!optionsResult.success) {
+                    throw new Error(optionsResult.error || 'Failed to start passkey registration');
+                }
+
+                const options = optionsResult.options;
+
+                // Step 2: Create credential
+                const credential = await navigator.credentials.create({
+                    publicKey: {
+                        challenge: base64ToArrayBuffer(options.challenge),
+                        rp: options.rp,
+                        user: {
+                            id: base64ToArrayBuffer(options.user.id),
+                            name: options.user.name,
+                            displayName: options.user.displayName
+                        },
+                        pubKeyCredParams: options.pubKeyCredParams,
+                        timeout: options.timeout,
+                        attestation: options.attestation,
+                        excludeCredentials: options.excludeCredentials?.map(cred => ({
+                            type: cred.type,
+                            id: base64ToArrayBuffer(cred.id),
+                            transports: cred.transports
+                        })),
+                        authenticatorSelection: options.authenticatorSelection
+                    }
+                });
+
+                if (!credential) {
+                    throw new Error('Passkey creation was cancelled');
+                }
+
+                // Step 3: Verify credential
+                const verifyResponse = await fetch('/auth/passkeys.php?action=verify', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        credential: credentialToJSON(credential),
+                        nickname: nickname
+                    })
+                });
+
+                const result = await verifyResponse.json();
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to add passkey');
+                }
+
+                showSuccess('Passkey added successfully!');
+                setTimeout(() => loadPasskeys(), 1000);
+
+            } catch (error) {
+                showError('Failed to add passkey: ' + error.message);
+            }
+        }
+
+        async function deletePasskey(credentialId) {
+            if (!confirm('Are you sure you want to delete this passkey?')) return;
+
+            try {
+                const response = await fetch('/auth/passkeys.php?action=delete', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ credential_id: credentialId })
+                });
+
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to delete passkey');
+                }
+
+                showSuccess('Passkey deleted');
+                setTimeout(() => loadPasskeys(), 1000);
+
+            } catch (error) {
+                showError('Failed to delete passkey: ' + error.message);
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+            setTimeout(() => errorDiv.classList.remove('show'), 5000);
+        }
+
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            successDiv.textContent = message;
+            successDiv.classList.add('show');
+            setTimeout(() => successDiv.classList.remove('show'), 3000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Event listeners
+        document.getElementById('addPasskeyBtn').addEventListener('click', addPasskey);
+
+        // Load passkeys on page load
+        loadPasskeys();
+    </script>
+</body>
+</html>
