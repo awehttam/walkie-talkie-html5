@@ -1599,13 +1599,16 @@ class WalkieTalkie {
     }
 
     showAuthenticatedUI() {
-        // Add user menu/controls to UI - append directly to body to avoid z-index issues
+        // Add user menu to header
+        const header = document.querySelector('.header');
+        if (!header) return;
+
         let userMenu = document.getElementById('userMenu');
         if (!userMenu) {
             userMenu = document.createElement('div');
             userMenu.id = 'userMenu';
             userMenu.className = 'user-menu';
-            document.body.appendChild(userMenu);
+            header.appendChild(userMenu);
         }
 
         userMenu.innerHTML = `
@@ -1622,13 +1625,16 @@ class WalkieTalkie {
     }
 
     showAnonymousUI() {
-        // Show user menu for anonymous users with screen name and register link
+        // Add user menu to header for anonymous users
+        const header = document.querySelector('.header');
+        if (!header) return;
+
         let userMenu = document.getElementById('userMenu');
         if (!userMenu) {
             userMenu = document.createElement('div');
             userMenu.id = 'userMenu';
             userMenu.className = 'user-menu';
-            document.body.appendChild(userMenu);
+            header.appendChild(userMenu);
         }
 
         // Build menu HTML based on whether registration is enabled
