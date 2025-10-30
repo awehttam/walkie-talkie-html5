@@ -1,4 +1,29 @@
 <?php
+/**
+ * Walkie Talkie PWA - WebSocket Server
+ *
+ * Copyright (C) 2025 Matthew Asham
+ *
+ * This program is dual-licensed:
+ *
+ * 1. GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)
+ *    For open source use, you can redistribute it and/or modify it under
+ *    the terms of the GNU Affero General Public License as published by
+ *    the Free Software Foundation, either version 3 of the License, or
+ *    (at your option) any later version.
+ *
+ * 2. Commercial License
+ *    For commercial or proprietary use without AGPL-3.0 obligations,
+ *    contact Matthew Asham at https://www.asham.ca/
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
 
 namespace WalkieTalkie;
 
@@ -25,6 +50,9 @@ class WebSocketServer implements MessageComponentInterface
     protected $anonymousSessions = []; // Map: resourceId => screen name
     protected $activeScreenNames = []; // Set of currently active screen names (for uniqueness check)
 
+    // Welcome messages
+    protected $welcomeMessages = []; // Cached welcome messages by trigger type
+
     public function __construct()
     {
         $this->clients = new SplObjectStorage;
@@ -32,6 +60,7 @@ class WebSocketServer implements MessageComponentInterface
         $this->activeTransmissions = [];
         $this->loadConfiguration();
         $this->initDatabase();
+        $this->loadWelcomeMessages();
     }
 
     private function loadConfiguration()
@@ -136,6 +165,151 @@ class WebSocketServer implements MessageComponentInterface
         }
     }
 
+    private function loadWelcomeMessages()
+    {
+        if (!$this->db) {
+            echo "Welcome messages disabled: database not available\n";
+            return;
+        }
+
+        try {
+            // Check if welcome_messages table exists
+            $result = $this->db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='welcome_messages'");
+            if (!$result->fetch()) {
+                echo "Welcome messages disabled: table not found (run migration)\n";
+                return;
+            }
+
+            // Load enabled welcome messages grouped by trigger type
+            $stmt = $this->db->query('
+                SELECT id, name, audio_file, trigger_type, channel
+                FROM welcome_messages
+                WHERE enabled = 1
+                ORDER BY created_at ASC
+            ');
+
+            $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Group by trigger type
+            $this->welcomeMessages = [
+                'connect' => [],
+                'channel_join' => [],
+                'both' => []
+            ];
+
+            foreach ($messages as $msg) {
+                $this->welcomeMessages[$msg['trigger_type']][] = $msg;
+            }
+
+            $totalCount = count($messages);
+            echo "Loaded {$totalCount} welcome messages\n";
+
+        } catch (PDOException $e) {
+            echo "Failed to load welcome messages: " . $e->getMessage() . "\n";
+            $this->welcomeMessages = [];
+        }
+    }
+
+    private function playWelcomeMessages(ConnectionInterface $conn, string $trigger, ?string $channel = null)
+    {
+        if (empty($this->welcomeMessages)) {
+            return; // No welcome messages configured
+        }
+
+        // Check if welcome messages are enabled
+        $enabled = ($_ENV['WELCOME_ENABLED'] ?? 'true') === 'true';
+        if (!$enabled) {
+            return;
+        }
+
+        // Collect applicable messages
+        $messages = array_merge(
+            $this->welcomeMessages[$trigger] ?? [],
+            $this->welcomeMessages['both'] ?? []
+        );
+
+        if (empty($messages)) {
+            return;
+        }
+
+        // Filter by channel if specified
+        if ($channel !== null) {
+            $messages = array_filter($messages, function($msg) use ($channel) {
+                return $msg['channel'] === null || $msg['channel'] === $channel;
+            });
+        }
+
+        if (empty($messages)) {
+            return;
+        }
+
+        // Load AudioProcessor for playing audio
+        require_once __DIR__ . '/../cli/lib/AudioProcessor.php';
+
+        foreach ($messages as $message) {
+            $audioFile = $message['audio_file'];
+
+            if (!file_exists($audioFile)) {
+                echo "Warning: Welcome audio not found: {$audioFile}\n";
+                continue;
+            }
+
+            try {
+                // Load and send audio
+                $audio = \WalkieTalkie\CLI\AudioProcessor::loadAudio($audioFile);
+
+                // Send audio_start
+                $conn->send(json_encode([
+                    'type' => 'audio_start',
+                    'channel' => $channel ?? '1',
+                    'screen_name' => 'Server',
+                    'sample_rate' => $audio['sample_rate'],
+                    'is_welcome' => true
+                ]));
+
+                // Send chunks
+                foreach ($audio['chunks'] as $chunk) {
+                    $conn->send(json_encode([
+                        'type' => 'audio',
+                        'channel' => $channel ?? '1',
+                        'audio' => $chunk,
+                        'screen_name' => 'Server',
+                        'is_welcome' => true
+                    ]));
+
+                    // Small delay between chunks
+                    usleep(10000); // 10ms
+                }
+
+                // Send audio_end
+                $conn->send(json_encode([
+                    'type' => 'audio_end',
+                    'channel' => $channel ?? '1',
+                    'screen_name' => 'Server',
+                    'is_welcome' => true
+                ]));
+
+                // Update play count in database
+                if ($this->db) {
+                    $stmt = $this->db->prepare('
+                        UPDATE welcome_messages
+                        SET last_played_at = :timestamp, play_count = play_count + 1
+                        WHERE id = :id
+                    ');
+                    $stmt->execute([
+                        ':timestamp' => time(),
+                        ':id' => $message['id']
+                    ]);
+                }
+
+                echo "Played welcome message '{$message['name']}' to connection {$conn->resourceId}\n";
+
+            } catch (\Exception $e) {
+                echo "Failed to play welcome message '{$message['name']}': " . $e->getMessage() . "\n";
+            }
+        }
+    }
+
     public function onOpen(ConnectionInterface $conn)
     {
         $this->clients->attach($conn);
@@ -206,6 +380,10 @@ class WebSocketServer implements MessageComponentInterface
 
             case 'history_request':
                 $this->sendChannelHistory($from, $data['channel'] ?? '1');
+                break;
+
+            case 'reload_welcome_messages':
+                $this->reloadWelcomeMessages($from);
                 break;
         }
     }
@@ -297,6 +475,9 @@ class WebSocketServer implements MessageComponentInterface
         ], $conn);
 
         echo "Connection {$conn->resourceId} ({$identity['screen_name']}) joined channel {$channelId}\n";
+
+        // Play channel join welcome messages
+        $this->playWelcomeMessages($conn, 'channel_join', $channelId);
     }
 
     private function leaveChannel(ConnectionInterface $conn, string $channelId)
@@ -636,6 +817,9 @@ class WebSocketServer implements MessageComponentInterface
         ]));
 
         echo "Connection {$conn->resourceId} authenticated as {$userData['username']}\n";
+
+        // Play connection welcome messages
+        $this->playWelcomeMessages($conn, 'connect');
     }
 
     private function setAnonymousScreenName(ConnectionInterface $conn, string $screenName): void
@@ -678,6 +862,9 @@ class WebSocketServer implements MessageComponentInterface
         ]));
 
         echo "Connection {$conn->resourceId} set anonymous screen name: {$screenName}\n";
+
+        // Play connection welcome messages
+        $this->playWelcomeMessages($conn, 'connect');
     }
 
     private function getConnectionIdentity(ConnectionInterface $conn): ?array
@@ -715,5 +902,19 @@ class WebSocketServer implements MessageComponentInterface
 
         // Check database (registered users)
         return !AuthManager::isScreenNameAvailable($screenName);
+    }
+
+    private function reloadWelcomeMessages(ConnectionInterface $conn): void
+    {
+        // Reload welcome messages from database
+        $this->loadWelcomeMessages();
+
+        // Send confirmation
+        $conn->send(json_encode([
+            'type' => 'welcome_messages_reloaded',
+            'message' => 'Welcome messages reloaded successfully'
+        ]));
+
+        echo "Welcome messages reloaded by connection {$conn->resourceId}\n";
     }
 }

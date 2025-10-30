@@ -41,6 +41,9 @@ class WalkieTalkie {
         this.isPlaying = false;
         this.courtesyBeepEnabled = true;
 
+        // Welcome message buffering
+        this.welcomeAudioBuffer = null;
+
         // Message history
         this.messageHistory = [];
         this.isPlayingHistory = false;
@@ -451,6 +454,54 @@ class WalkieTalkie {
                 this.updateParticipantsCount();
                 if (data.screen_name) {
                     console.log(`${data.screen_name} left the channel`);
+                }
+                break;
+
+            case 'audio_start':
+                // Welcome message or incoming audio transmission starting
+                if (data.is_welcome) {
+                    console.log('Welcome message starting from:', data.screen_name);
+                    // Initialize buffer for welcome message chunks
+                    this.welcomeAudioBuffer = {
+                        chunks: [],
+                        sample_rate: data.sample_rate || 48000,
+                        screen_name: data.screen_name
+                    };
+                }
+                break;
+
+            case 'audio':
+                // Audio chunk - either welcome message or regular transmission
+                if (data.is_welcome && this.welcomeAudioBuffer) {
+                    // Buffer welcome message chunks
+                    this.welcomeAudioBuffer.chunks.push(data.audio);
+                }
+                break;
+
+            case 'audio_end':
+                // End of audio transmission
+                if (data.is_welcome && this.welcomeAudioBuffer) {
+                    console.log('Welcome message complete, playing audio');
+
+                    // Decode each base64 chunk, concatenate binary data, then re-encode
+                    const binaryChunks = this.welcomeAudioBuffer.chunks.map(chunk => {
+                        try {
+                            return atob(chunk);
+                        } catch (e) {
+                            console.error('Failed to decode chunk:', e);
+                            return '';
+                        }
+                    });
+
+                    const concatenatedBinary = binaryChunks.join('');
+                    const concatenatedAudio = btoa(concatenatedBinary);
+
+                    this.playPCMAudio(
+                        concatenatedAudio,
+                        this.welcomeAudioBuffer.sample_rate,
+                        1 // mono
+                    );
+                    this.welcomeAudioBuffer = null;
                 }
                 break;
 

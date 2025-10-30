@@ -19,6 +19,10 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
   - Visual history panel with timestamps and user identities
   - Live updates as users speak
 - **Channel Support**: Multiple channels with isolated message histories
+- **CLI Audio Tools**: Command-line utilities for sending audio and managing welcome messages
+  - Send pre-recorded audio to channels (announcements, notifications)
+  - Automated welcome messages on server connect or channel join
+  - Support for WAV files and raw PCM16 audio
 - **Progressive Web App**: Installable, offline-capable, responsive design
 - **Embeddable**: Can be embedded in iframes or linked directly
 - **Cross-platform**: Works on desktop and mobile devices
@@ -116,6 +120,98 @@ Embed in an iframe:
 - `width`: Embed width (default: "100%")
 - `height`: Embed height (default: "300px")
 
+## CLI Tools
+
+The application includes command-line utilities for sending audio and managing welcome messages.
+
+### Sending Audio (walkie-cli.php)
+
+Send pre-recorded audio files to channels for announcements or notifications:
+
+```bash
+# Send audio with screen name
+php cli/walkie-cli.php send announcement.wav --channel 1 --screen-name "AudioBot"
+
+# Send audio with JWT token
+php cli/walkie-cli.php send message.wav --channel 1 --token "eyJhbGc..."
+
+# Send raw PCM16 from stdin
+cat audio.pcm | php cli/walkie-cli.php send - --channel 1 --screen-name "Bot" --sample-rate 48000
+
+# Specify custom WebSocket URL
+php cli/walkie-cli.php send msg.wav --channel 1 --screen-name "Bot" --url "ws://example.com:8080"
+```
+
+**Supported Audio Formats**:
+- WAV files (PCM, 16-bit, mono) - format detected automatically
+- Raw PCM16 data (requires --sample-rate flag)
+
+**Options**:
+- `--channel <id>` - Channel to send to (required)
+- `--token <jwt>` - JWT access token for authentication
+- `--screen-name <name>` - Screen name for anonymous mode
+- `--url <url>` - WebSocket server URL (default: ws://localhost:8080)
+- `--sample-rate <rate>` - Sample rate for raw PCM16 (default: 48000)
+- `--chunk-size <bytes>` - Chunk size in bytes (default: 4096)
+- `--verbose` - Show detailed progress
+
+### Managing Welcome Messages (welcome-manager.php)
+
+Configure automated welcome messages that play when users connect or join channels:
+
+```bash
+# List all welcome messages
+php cli/welcome-manager.php list
+
+# Add server welcome message (plays on connect)
+php cli/welcome-manager.php add \
+    --name "Server Welcome" \
+    --audio data/audio/welcome.wav \
+    --trigger connect
+
+# Add channel-specific welcome (plays on channel join)
+php cli/welcome-manager.php add \
+    --name "Channel 1 Welcome" \
+    --audio data/audio/channel1.wav \
+    --trigger channel_join \
+    --channel 1
+
+# Add message for both triggers
+php cli/welcome-manager.php add \
+    --name "Universal Welcome" \
+    --audio data/audio/welcome-all.wav \
+    --trigger both
+
+# Delete, enable, or disable messages
+php cli/welcome-manager.php delete --id 3
+php cli/welcome-manager.php disable --id 2
+php cli/welcome-manager.php enable --id 2
+
+# Test a welcome message
+php cli/welcome-manager.php test --id 1 --channel 1
+
+# Show statistics
+php cli/welcome-manager.php stats
+```
+
+**Setup**:
+1. Run database migration: `php migrations/003_add_welcome_messages.php`
+2. Add welcome messages using the CLI tool
+3. Restart WebSocket server: `php server.php restart`
+
+**Trigger Types**:
+- `connect` - Plays when user authenticates or sets screen name
+- `channel_join` - Plays when user joins a channel
+- `both` - Plays on both events
+
+**Environment Variables**:
+```env
+WELCOME_ENABLED=true                    # Enable/disable welcome messages
+CLI_DEFAULT_WEBSOCKET_URL=ws://localhost:8080
+CLI_DEFAULT_SAMPLE_RATE=48000
+CLI_DEFAULT_CHUNK_SIZE=4096
+```
+
 ## Architecture
 
 ### Backend Components
@@ -142,10 +238,22 @@ walkie-talkie/
 │       ├── style.css      # Main styles
 │       ├── embed.css      # Embed-specific styles
 │       └── walkie-talkie.js # Core JavaScript
+├── cli/
+│   ├── walkie-cli.php     # CLI tool for sending audio
+│   ├── welcome-manager.php # CLI tool for managing welcome messages
+│   └── lib/
+│       ├── AudioProcessor.php   # Audio format handling
+│       ├── WebSocketClient.php  # WebSocket client
+│       ├── AudioSender.php      # Audio transmission
+│       └── WelcomeManager.php   # Welcome message DB operations
 ├── src/
 │   └── WebSocketServer.php # WebSocket server implementation
 ├── data/
 │   └── walkie-talkie.db   # SQLite database (auto-created)
+├── migrations/
+│   └── 003_add_welcome_messages.php # Welcome messages migration
+├── docs/
+│   └── AUDIOMANAGER.md    # CLI tools implementation plan
 ├── server.php             # Server startup script
 ├── composer.json          # PHP dependencies
 ├── .env.example           # Environment configuration template
@@ -387,4 +495,6 @@ You can inject custom HTML into the header and footer of all pages:
 
 ## License
 
-Dual licensed. GPL-3 License for Open Source.  Commercial/Non Open Source usage requires a seperate licensing agreement.
+Dual licensed. AGPL-3.0 License for Open Source. Commercial/Non Open Source usage requires a separate licensing agreement.
+
+See [LICENSE.md](LICENSE.md) for details.

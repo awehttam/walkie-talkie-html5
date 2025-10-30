@@ -2,16 +2,20 @@
     "name": "walkie-talkie/pwa",
     "description": "Embeddable Walkie Talkie Progressive Web App",
     "type": "project",
-    "license": "GPL-3.0-or-later",
+    "license": "AGPL-3.0-or-later",
     "require": {
         "php": ">=8.1",
         "cboden/ratchet": "^0.4",
+        "ratchet/pawl": "^0.3",
+        "react/event-loop": "^1.5",
+        "react/socket": "^1.15",
         "vlucas/phpdotenv": "^5.6",
         "web-auth/webauthn-lib": "^4.0",
         "web-auth/cose-lib": "^4.0",
         "firebase/php-jwt": "^6.0",
         "ramsey/uuid": "^4.0",
-        "spomky-labs/cbor-php": "^3.0"
+        "spomky-labs/cbor-php": "^3.0",
+        "guzzlehttp/psr7": "^1.7"
     },
     "autoload": {
         "psr-4": {
