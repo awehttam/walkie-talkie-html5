@@ -289,4 +289,4 @@ You can inject custom HTML into the header and footer of all pages:
 
 ## License
 
-MIT License - feel free to use and modify for your projects.
+Dual licensed. GPL-3 License for Open Source.  Commercial/Non Open Source usage requires a seperate licensing agreement.
