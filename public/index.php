@@ -30,6 +30,9 @@ if (file_exists(__DIR__ . '/../templates/header.php')) {
                 <span>Channel: <strong id="channel-display">1</strong></span>
                 <span id="participants-count">0 participants</span>
             </div>
+            <div id="auth-link" class="auth-link" style="display: none;">
+                <a href="/login.html" class="auth-link-btn">🔐 Login / Register</a>
+            </div>
         </header>
 
         <main class="main">

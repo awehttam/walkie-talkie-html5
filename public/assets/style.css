@@ -636,3 +636,24 @@ input[type="range"]:focus-visible {
         font-size: 13px;
     }
 }
+/* Authentication link */
+.auth-link {
+    margin-top: 10px;
+    text-align: center;
+}
+
+.auth-link-btn {
+    display: inline-block;
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 0.9em;
+    transition: background 0.3s;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.auth-link-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}

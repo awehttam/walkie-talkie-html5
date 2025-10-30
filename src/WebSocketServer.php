@@ -20,6 +20,11 @@ class WebSocketServer implements MessageComponentInterface
     protected $maxMessagesPerChannel = 10; // Maximum number of messages to keep per channel
     protected $maxMessageAge = 300; // Maximum message age in seconds (default: 5 minutes)
 
+    // Authentication tracking
+    protected $authenticatedUsers = []; // Map: resourceId => user data
+    protected $anonymousSessions = []; // Map: resourceId => screen name
+    protected $activeScreenNames = []; // Set of currently active screen names (for uniqueness check)
+
     public function __construct()
     {
         $this->clients = new SplObjectStorage;
@@ -135,6 +140,14 @@ class WebSocketServer implements MessageComponentInterface
     {
         $this->clients->attach($conn);
         echo "New connection! ({$conn->resourceId})\n";
+
+        // Check if authentication is required
+        if ($this->requireAuthentication()) {
+            $conn->send(json_encode([
+                'type' => 'authentication_required',
+                'message' => 'Please log in to continue'
+            ]));
+        }
     }
 
     private function getClientIp(ConnectionInterface $conn): string
@@ -163,6 +176,14 @@ class WebSocketServer implements MessageComponentInterface
         if (!$data) return;
 
         switch ($data['type']) {
+            case 'authenticate':
+                $this->authenticateConnection($from, $data['token'] ?? '');
+                break;
+
+            case 'set_screen_name':
+                $this->setAnonymousScreenName($from, $data['screen_name'] ?? '');
+                break;
+
             case 'join_channel':
                 $this->joinChannel($from, $data['channel'] ?? '1');
                 break;
@@ -191,6 +212,9 @@ class WebSocketServer implements MessageComponentInterface
 
     public function onClose(ConnectionInterface $conn)
     {
+        // Get identity before cleanup for logging
+        $identity = $this->getConnectionIdentity($conn);
+
         // Clean up any active transmissions for this connection
         foreach (array_keys($this->activeTransmissions) as $key) {
             if (strpos($key, $conn->resourceId . '_') === 0) {
@@ -198,9 +222,27 @@ class WebSocketServer implements MessageComponentInterface
             }
         }
 
+        // Remove from authentication tracking
+        if (isset($this->authenticatedUsers[$conn->resourceId])) {
+            $username = $this->authenticatedUsers[$conn->resourceId]['username'];
+            unset($this->activeScreenNames[$username]);
+            unset($this->authenticatedUsers[$conn->resourceId]);
+        }
+
+        if (isset($this->anonymousSessions[$conn->resourceId])) {
+            $screenName = $this->anonymousSessions[$conn->resourceId];
+            unset($this->activeScreenNames[$screenName]);
+            unset($this->anonymousSessions[$conn->resourceId]);
+        }
+
         $this->removeFromAllChannels($conn);
         $this->clients->detach($conn);
-        echo "Connection {$conn->resourceId} has disconnected\n";
+
+        if ($identity) {
+            echo "Connection {$conn->resourceId} ({$identity['screen_name']}) has disconnected\n";
+        } else {
+            echo "Connection {$conn->resourceId} has disconnected\n";
+        }
     }
 
     public function onError(ConnectionInterface $conn, \Exception $e)
@@ -217,6 +259,16 @@ class WebSocketServer implements MessageComponentInterface
             $conn->send(json_encode([
                 'type' => 'error',
                 'message' => 'Invalid channel. Channel must be between 1 and 999.'
+            ]));
+            return;
+        }
+
+        // Check if user has identity (authenticated or anonymous)
+        $identity = $this->getConnectionIdentity($conn);
+        if (!$identity) {
+            $conn->send(json_encode([
+                'type' => 'error',
+                'message' => 'Must authenticate or set screen name first'
             ]));
             return;
         }
@@ -240,10 +292,11 @@ class WebSocketServer implements MessageComponentInterface
 
         $this->broadcastToChannel($channelId, [
             'type' => 'participant_joined',
+            'screen_name' => $identity['screen_name'],
             'participants' => count($this->channels[$channelId])
         ], $conn);
 
-        echo "Connection {$conn->resourceId} joined channel {$channelId}\n";
+        echo "Connection {$conn->resourceId} ({$identity['screen_name']}) joined channel {$channelId}\n";
     }
 
     private function leaveChannel(ConnectionInterface $conn, string $channelId)
@@ -338,21 +391,38 @@ class WebSocketServer implements MessageComponentInterface
 
     private function handlePushToTalkStart(ConnectionInterface $conn, string $channel)
     {
+        $identity = $this->getConnectionIdentity($conn);
         $clientIp = $this->getClientIp($conn);
-        echo "[TALK START] Channel {$channel} - Client {$conn->resourceId} from {$clientIp}\n";
 
-        $this->broadcastToChannel($channel, [
+        $screenName = $identity ? $identity['screen_name'] : 'unknown';
+        echo "[TALK START] Channel {$channel} - {$screenName} (Client {$conn->resourceId}) from {$clientIp}\n";
+
+        $message = [
             'type' => 'user_speaking',
             'speaking' => true
-        ], $conn);
+        ];
+
+        if ($identity) {
+            $message['screen_name'] = $identity['screen_name'];
+        }
+
+        $this->broadcastToChannel($channel, $message, $conn);
     }
 
     private function handlePushToTalkEnd(ConnectionInterface $conn, string $channel)
     {
-        $this->broadcastToChannel($channel, [
+        $identity = $this->getConnectionIdentity($conn);
+
+        $message = [
             'type' => 'user_speaking',
             'speaking' => false
-        ], $conn);
+        ];
+
+        if ($identity) {
+            $message['screen_name'] = $identity['screen_name'];
+        }
+
+        $this->broadcastToChannel($channel, $message, $conn);
 
         // Save complete transmission to database
         $transmissionKey = $conn->resourceId . '_' . $channel;
@@ -375,10 +445,12 @@ class WebSocketServer implements MessageComponentInterface
 
             $clientIp = $this->getClientIp($conn);
             $clientId = $transmission['clientId'];
-            echo "[TALK END] Channel {$channel} - Client ID: {$clientId}, Connection: {$conn->resourceId}, IP: {$clientIp}, Duration: {$duration}ms\n";
+            $screenName = $identity ? $identity['screen_name'] : 'unknown';
+            echo "[TALK END] Channel {$channel} - {$screenName} (Client ID: {$clientId}, Connection: {$conn->resourceId}, IP: {$clientIp}), Duration: {$duration}ms\n";
 
             // Save to database
             $this->saveMessage(
+                $conn,
                 $transmission['channel'],
                 $transmission['clientId'],
                 $completeAudio,
@@ -391,24 +463,31 @@ class WebSocketServer implements MessageComponentInterface
         }
     }
 
-    private function saveMessage(string $channel, string $clientId, string $audioData, int $sampleRate, int $duration)
+    private function saveMessage(ConnectionInterface $conn, string $channel, string $clientId, string $audioData, int $sampleRate, int $duration)
     {
         if (!$this->db) {
             return; // Database not available
         }
 
         try {
+            // Get identity for user_id and screen_name
+            $identity = $this->getConnectionIdentity($conn);
+            $userId = $identity['user_id'] ?? null;
+            $screenName = $identity['screen_name'] ?? substr($clientId, 0, 20);
+
             $timestamp = round(microtime(true) * 1000); // milliseconds
 
             // Insert new message
             $stmt = $this->db->prepare('
-                INSERT INTO message_history (channel, client_id, audio_data, sample_rate, duration, timestamp)
-                VALUES (:channel, :client_id, :audio_data, :sample_rate, :duration, :timestamp)
+                INSERT INTO message_history (channel, client_id, user_id, screen_name, audio_data, sample_rate, duration, timestamp)
+                VALUES (:channel, :client_id, :user_id, :screen_name, :audio_data, :sample_rate, :duration, :timestamp)
             ');
 
             $stmt->execute([
                 ':channel' => $channel,
                 ':client_id' => $clientId,
+                ':user_id' => $userId,
+                ':screen_name' => $screenName,
                 ':audio_data' => $audioData,
                 ':sample_rate' => $sampleRate,
                 ':duration' => $duration,
@@ -450,7 +529,7 @@ class WebSocketServer implements MessageComponentInterface
                 echo "Retrying after database lock...\n";
                 usleep(100000); // Wait 100ms
                 try {
-                    $this->saveMessage($channel, $clientId, $audioData, $sampleRate, $duration);
+                    $this->saveMessage($conn, $channel, $clientId, $audioData, $sampleRate, $duration);
                 } catch (PDOException $retryError) {
                     echo "Retry failed: " . $retryError->getMessage() . "\n";
                 }
@@ -468,7 +547,7 @@ class WebSocketServer implements MessageComponentInterface
             $cutoffTimestamp = round((microtime(true) - $this->maxMessageAge) * 1000);
 
             $stmt = $this->db->prepare('
-                SELECT client_id, audio_data, sample_rate, duration, timestamp
+                SELECT client_id, screen_name, audio_data, sample_rate, duration, timestamp
                 FROM message_history
                 WHERE channel = :channel
                 AND timestamp >= :cutoff_timestamp
@@ -514,5 +593,127 @@ class WebSocketServer implements MessageComponentInterface
                 $client->send(json_encode($message));
             }
         }
+    }
+
+    // Authentication helper methods
+
+    private function requireAuthentication(): bool
+    {
+        return ($_ENV['ANONYMOUS_MODE_ENABLED'] ?? 'true') !== 'true';
+    }
+
+    private function authenticateConnection(ConnectionInterface $conn, string $token): void
+    {
+        if (empty($token)) {
+            $conn->send(json_encode(['type' => 'error', 'message' => 'Token required']));
+            return;
+        }
+
+        // Validate token using AuthManager
+        $userData = AuthManager::validateAccessToken($token);
+        if (!$userData) {
+            $conn->send(json_encode(['type' => 'error', 'message' => 'Invalid token']));
+            return;
+        }
+
+        // Mark connection as authenticated
+        $this->authenticatedUsers[$conn->resourceId] = [
+            'user_id' => (int)$userData['sub'],
+            'username' => $userData['username'],
+            'authenticated_at' => time() * 1000,
+            'connection' => $conn
+        ];
+
+        // Add screen name to active set
+        $this->activeScreenNames[$userData['username']] = true;
+
+        $conn->send(json_encode([
+            'type' => 'authenticated',
+            'user' => [
+                'id' => (int)$userData['sub'],
+                'username' => $userData['username']
+            ]
+        ]));
+
+        echo "Connection {$conn->resourceId} authenticated as {$userData['username']}\n";
+    }
+
+    private function setAnonymousScreenName(ConnectionInterface $conn, string $screenName): void
+    {
+        // Only allow if anonymous mode enabled
+        if ($this->requireAuthentication()) {
+            $conn->send(json_encode(['type' => 'error', 'message' => 'Anonymous mode disabled']));
+            return;
+        }
+
+        // Check if already authenticated
+        if (isset($this->authenticatedUsers[$conn->resourceId])) {
+            $conn->send(json_encode(['type' => 'error', 'message' => 'Already authenticated']));
+            return;
+        }
+
+        // Validate screen name
+        if (!AuthManager::validateScreenName($screenName)) {
+            $conn->send(json_encode(['type' => 'error', 'message' => 'Invalid screen name']));
+            return;
+        }
+
+        // Check uniqueness (against DB and active anonymous sessions)
+        if ($this->isScreenNameInUse($screenName)) {
+            $conn->send(json_encode([
+                'type' => 'error',
+                'code' => 'screen_name_taken',
+                'message' => 'That name is already in use'
+            ]));
+            return;
+        }
+
+        // Store anonymous session
+        $this->anonymousSessions[$conn->resourceId] = $screenName;
+        $this->activeScreenNames[$screenName] = true;
+
+        $conn->send(json_encode([
+            'type' => 'screen_name_set',
+            'screen_name' => $screenName
+        ]));
+
+        echo "Connection {$conn->resourceId} set anonymous screen name: {$screenName}\n";
+    }
+
+    private function getConnectionIdentity(ConnectionInterface $conn): ?array
+    {
+        $resourceId = $conn->resourceId;
+
+        // Check if authenticated user
+        if (isset($this->authenticatedUsers[$resourceId])) {
+            $user = $this->authenticatedUsers[$resourceId];
+            return [
+                'type' => 'authenticated',
+                'user_id' => $user['user_id'],
+                'screen_name' => $user['username']
+            ];
+        }
+
+        // Check if anonymous session
+        if (isset($this->anonymousSessions[$resourceId])) {
+            return [
+                'type' => 'anonymous',
+                'user_id' => null,
+                'screen_name' => $this->anonymousSessions[$resourceId]
+            ];
+        }
+
+        return null;
+    }
+
+    private function isScreenNameInUse(string $screenName): bool
+    {
+        // Check active connections (authenticated + anonymous)
+        if (isset($this->activeScreenNames[$screenName])) {
+            return true;
+        }
+
+        // Check database (registered users)
+        return !AuthManager::isScreenNameAvailable($screenName);
     }
 }
