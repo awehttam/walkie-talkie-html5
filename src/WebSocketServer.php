@@ -309,6 +309,9 @@ class WebSocketServer implements MessageComponentInterface
 
     private function handlePushToTalkStart(ConnectionInterface $conn, string $channel)
     {
+        $remoteAddress = $conn->remoteAddress ?? 'unknown';
+        echo "[TALK START] Channel {$channel} - Client {$conn->resourceId} from {$remoteAddress}\n";
+
         $this->broadcastToChannel($channel, [
             'type' => 'user_speaking',
             'speaking' => true
@@ -340,6 +343,10 @@ class WebSocketServer implements MessageComponentInterface
             // Calculate total duration
             $audioDataLength = strlen($binaryData);
             $duration = round(($audioDataLength / 2) / $transmission['sampleRate'] * 1000);
+
+            $remoteAddress = $conn->remoteAddress ?? 'unknown';
+            $clientId = $transmission['clientId'];
+            echo "[TALK END] Channel {$channel} - Client ID: {$clientId}, Connection: {$conn->resourceId}, IP: {$remoteAddress}, Duration: {$duration}ms\n";
 
             // Save to database
             $this->saveMessage(
