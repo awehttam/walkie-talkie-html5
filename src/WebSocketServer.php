@@ -32,19 +32,19 @@ class WebSocketServer implements MessageComponentInterface
     private function loadConfiguration()
     {
         // Load configuration from environment variables
-        $maxCount = getenv('MESSAGE_HISTORY_MAX_COUNT');
-        if ($maxCount !== false && is_numeric($maxCount)) {
+        $maxCount = $_ENV['MESSAGE_HISTORY_MAX_COUNT'] ?? null;
+        if ($maxCount !== null && is_numeric($maxCount)) {
             $this->maxMessagesPerChannel = (int)$maxCount;
         }
 
-        $maxAge = getenv('MESSAGE_HISTORY_MAX_AGE');
-        if ($maxAge !== false && is_numeric($maxAge)) {
+        $maxAge = $_ENV['MESSAGE_HISTORY_MAX_AGE'] ?? null;
+        if ($maxAge !== null && is_numeric($maxAge)) {
             $this->maxMessageAge = (int)$maxAge;
         }
 
         // Load trusted proxy IPs from environment variable
-        $trustedProxiesEnv = getenv('TRUSTED_PROXIES');
-        if ($trustedProxiesEnv !== false && !empty($trustedProxiesEnv)) {
+        $trustedProxiesEnv = $_ENV['TRUSTED_PROXIES'] ?? '';
+        if (!empty($trustedProxiesEnv)) {
             $this->trustedProxies = array_map('trim', explode(',', $trustedProxiesEnv));
             echo "Trusted proxies configured: " . implode(', ', $this->trustedProxies) . "\n";
         } else {
