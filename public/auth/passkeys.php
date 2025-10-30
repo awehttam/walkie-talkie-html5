@@ -148,7 +148,9 @@ switch ($action) {
 
             // Decode attestation object and extract credential
             $attestationObject = base64_decode($credential['response']['attestationObject']);
-            $attestationData = \CBOR\CBOREncoder::decode($attestationObject);
+            $decoder = new \CBOR\Decoder();
+            $stream = new \CBOR\StringStream($attestationObject);
+            $attestationData = $decoder->decode($stream)->getNormalizedData();
             $authData = $attestationData['authData'];
 
             // Parse authenticator data

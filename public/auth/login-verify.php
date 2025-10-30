@@ -94,7 +94,9 @@ try {
 
     // Decode public key (COSE format)
     $publicKeyCose = base64_decode($storedCredential['public_key']);
-    $publicKeyData = \CBOR\CBOREncoder::decode($publicKeyCose);
+    $decoder = new \CBOR\Decoder();
+    $stream = new \CBOR\StringStream($publicKeyCose);
+    $publicKeyData = $decoder->decode($stream)->getNormalizedData();
 
     // Extract key type and algorithm
     $kty = $publicKeyData[1] ?? null; // Key type

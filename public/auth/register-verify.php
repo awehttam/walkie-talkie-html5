@@ -65,9 +65,10 @@ try {
     // Decode attestation object
     $attestationObject = base64_decode($credential['response']['attestationObject']);
 
-    // For simplicity, we'll use a basic parsing approach
-    // In production, you'd use the full WebAuthn library parsing
-    $attestationData = \CBOR\CBOREncoder::decode($attestationObject);
+    // Parse CBOR-encoded attestation object
+    $decoder = new \CBOR\Decoder();
+    $stream = new \CBOR\StringStream($attestationObject);
+    $attestationData = $decoder->decode($stream)->getNormalizedData();
 
     if (!isset($attestationData['authData'])) {
         throw new Exception('Invalid attestation object');
