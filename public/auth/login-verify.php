@@ -24,8 +24,11 @@ if (!$challenge || !$username) {
 }
 
 try {
-    // Decode credential ID
-    $credentialId = base64_decode($credential['rawId']);
+    // Decode credential ID (URL-safe base64)
+    $rawIdBase64 = $credential['rawId'];
+    // Convert URL-safe base64 to standard base64
+    $rawIdBase64 = str_pad(strtr($rawIdBase64, '-_', '+/'), strlen($rawIdBase64) % 4, '=', STR_PAD_RIGHT);
+    $credentialId = base64_decode($rawIdBase64);
     $credentialIdBase64 = base64_encode($credentialId);
 
     // Get credential from database
@@ -118,12 +121,23 @@ try {
                 $key = $item->getKey();
                 $value = $item->getValue();
 
-                // Get numeric key
-                $keyInt = (is_numeric($key)) ? (int)$key : $key;
+                // Extract the actual integer key from CBOR object (keep as int!)
+                if ($key instanceof \CBOR\UnsignedIntegerObject) {
+                    $keyInt = (int)$key->getValue();
+                } elseif ($key instanceof \CBOR\SignedIntegerObject) {
+                    $keyInt = (int)$key->getValue();
+                } elseif ($key instanceof \CBOR\NegativeIntegerObject) {
+                    $keyInt = (int)$key->getValue();
+                } else {
+                    // For non-integer keys, convert to string
+                    $keyInt = (string)$key;
+                }
 
-                // Handle ByteStringObject values
+                // Handle different value types
                 if ($value instanceof \CBOR\ByteStringObject) {
                     $publicKeyData[$keyInt] = $value->getValue();
+                } elseif ($value instanceof \CBOR\UnsignedIntegerObject || $value instanceof \CBOR\SignedIntegerObject || $value instanceof \CBOR\NegativeIntegerObject) {
+                    $publicKeyData[$keyInt] = (int)$value->getValue();
                 } else {
                     $publicKeyData[$keyInt] = $value;
                 }
@@ -136,22 +150,31 @@ try {
     $alg = $publicKeyData[3] ?? null; // Algorithm
 
     // For EC2 keys (most common with WebAuthn)
-    if ($kty === 2) { // EC2
+    // Use loose comparison since values might be strings or integers
+    if ($kty == 2) { // EC2
         $crv = $publicKeyData[-1] ?? null; // Curve
         $x = $publicKeyData[-2] ?? null;   // X coordinate
         $y = $publicKeyData[-3] ?? null;   // Y coordinate
 
-        if ($crv === 1 && $x && $y) { // P-256
+        if ($crv == 1 && $x && $y) { // P-256
             // Create public key in PEM format
-            $publicKeyPem = self::createECPublicKeyPem($x, $y);
+            $publicKeyPem = createECPublicKeyPem($x, $y);
+
+            // Get key resource for verification
+            $keyResource = openssl_pkey_get_public($publicKeyPem);
+            if ($keyResource === false) {
+                throw new Exception('Invalid public key PEM format');
+            }
 
             // Verify signature using OpenSSL
             $verified = openssl_verify(
                 $dataToVerify,
                 $signature,
-                $publicKeyPem,
+                $keyResource,
                 OPENSSL_ALGO_SHA256
             );
+
+            openssl_free_key($keyResource);
 
             if ($verified !== 1) {
                 throw new Exception('Signature verification failed');
@@ -210,7 +233,7 @@ try {
         ]
     ]);
 
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     // Clear session on error
     unset($_SESSION['webauthn_challenge']);
     unset($_SESSION['webauthn_username']);
@@ -223,21 +246,41 @@ try {
  */
 function createECPublicKeyPem(string $x, string $y): string
 {
-    // For P-256 curve
-    // ASN.1 structure for EC public key
-    $publicKeyHex = '04' . bin2hex($x) . bin2hex($y); // Uncompressed point format
+    // P-256 uncompressed point: 0x04 + X (32 bytes) + Y (32 bytes)
+    $publicKeyBytes = "\x04" . $x . $y;
 
-    // EC Parameters for P-256 (secp256r1 / prime256v1)
-    $ecParams = '06082a8648ce3d030107'; // OID for prime256v1
+    // Build ASN.1 DER structure for EC public key
+    // SEQUENCE {
+    //   SEQUENCE {
+    //     OBJECT IDENTIFIER ecPublicKey (1.2.840.10045.2.1)
+    //     OBJECT IDENTIFIER prime256v1 (1.2.840.10045.3.1.7)
+    //   }
+    //   BIT STRING public key
+    // }
 
-    // Build the public key structure
-    $publicKeyBitString = '03' . self::encodeLength(strlen($publicKeyHex) / 2 + 1) . '00' . $publicKeyHex;
-    $algorithmIdentifier = '30' . self::encodeLength(strlen($ecParams . '0500') / 2) . '06072a8648ce3d0201' . $ecParams;
-    $publicKeyInfo = '30' . self::encodeLength(strlen($algorithmIdentifier . $publicKeyBitString) / 2) . $algorithmIdentifier . $publicKeyBitString;
+    // Algorithm identifier for EC with P-256 curve
+    $algorithmId =
+        "\x30\x13" .                          // SEQUENCE, length 19
+        "\x06\x07\x2a\x86\x48\xce\x3d\x02\x01" . // OID ecPublicKey
+        "\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07"; // OID prime256v1
+
+    // BIT STRING containing the public key
+    $publicKeyBitString =
+        "\x03" .                              // BIT STRING tag
+        chr(strlen($publicKeyBytes) + 1) .    // Length
+        "\x00" .                              // Unused bits
+        $publicKeyBytes;                      // Public key data
+
+    // Final SubjectPublicKeyInfo structure
+    $spki =
+        "\x30" .                              // SEQUENCE tag
+        chr(strlen($algorithmId . $publicKeyBitString)) .
+        $algorithmId .
+        $publicKeyBitString;
 
     $pem = "-----BEGIN PUBLIC KEY-----\n";
-    $pem .= chunk_split(base64_encode(hex2bin($publicKeyInfo)), 64, "\n");
-    $pem .= "-----END PUBLIC KEY-----";
+    $pem .= chunk_split(base64_encode($spki), 64, "\n");
+    $pem .= "-----END PUBLIC KEY-----\n";
 
     return $pem;
 }
