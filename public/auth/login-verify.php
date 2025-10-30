@@ -45,12 +45,18 @@ try {
         throw new Exception('Username mismatch');
     }
 
-    // Decode client data JSON
-    $clientDataJSON = base64_decode($credential['response']['clientDataJSON']);
+    // Decode client data JSON (URL-safe base64)
+    $clientDataBase64 = $credential['response']['clientDataJSON'];
+    // Convert URL-safe base64 to standard base64
+    $clientDataBase64 = str_pad(strtr($clientDataBase64, '-_', '+/'), strlen($clientDataBase64) % 4, '=', STR_PAD_RIGHT);
+    $clientDataJSON = base64_decode($clientDataBase64);
     $clientData = json_decode($clientDataJSON, true);
 
-    // Verify challenge
-    if (!isset($clientData['challenge']) || $clientData['challenge'] !== $challenge) {
+    // Verify challenge - convert both to URL-safe base64 for comparison
+    // The browser returns URL-safe base64 (no padding, - and _ instead of + and /)
+    $challengeUrlSafe = rtrim(strtr($challenge, '+/', '-_'), '=');
+    $clientChallenge = $clientData['challenge'] ?? '';
+    if ($clientChallenge !== $challengeUrlSafe) {
         throw new Exception('Challenge mismatch');
     }
 
@@ -65,8 +71,11 @@ try {
         throw new Exception('Invalid type');
     }
 
-    // Decode authenticator data
-    $authenticatorData = base64_decode($credential['response']['authenticatorData']);
+    // Decode authenticator data (URL-safe base64)
+    $authenticatorDataBase64 = $credential['response']['authenticatorData'];
+    // Convert URL-safe base64 to standard base64
+    $authenticatorDataBase64 = str_pad(strtr($authenticatorDataBase64, '-_', '+/'), strlen($authenticatorDataBase64) % 4, '=', STR_PAD_RIGHT);
+    $authenticatorData = base64_decode($authenticatorDataBase64);
     if (strlen($authenticatorData) < 37) {
         throw new Exception('Invalid authenticator data');
     }
@@ -85,8 +94,11 @@ try {
         throw new Exception('Invalid counter (possible replay attack)');
     }
 
-    // Decode signature
-    $signature = base64_decode($credential['response']['signature']);
+    // Decode signature (URL-safe base64)
+    $signatureBase64 = $credential['response']['signature'];
+    // Convert URL-safe base64 to standard base64
+    $signatureBase64 = str_pad(strtr($signatureBase64, '-_', '+/'), strlen($signatureBase64) % 4, '=', STR_PAD_RIGHT);
+    $signature = base64_decode($signatureBase64);
 
     // Verify signature
     $clientDataHash = hash('sha256', $clientDataJSON, true);
@@ -96,7 +108,28 @@ try {
     $publicKeyCose = base64_decode($storedCredential['public_key']);
     $decoder = new \CBOR\Decoder();
     $stream = new \CBOR\StringStream($publicKeyCose);
-    $publicKeyData = $decoder->decode($stream)->getNormalizedData();
+    $publicKeyObject = $decoder->decode($stream);
+
+    // Convert CBOR map to array
+    $publicKeyData = [];
+    if ($publicKeyObject instanceof \CBOR\MapObject) {
+        foreach ($publicKeyObject as $item) {
+            if ($item instanceof \CBOR\MapItem) {
+                $key = $item->getKey();
+                $value = $item->getValue();
+
+                // Get numeric key
+                $keyInt = (is_numeric($key)) ? (int)$key : $key;
+
+                // Handle ByteStringObject values
+                if ($value instanceof \CBOR\ByteStringObject) {
+                    $publicKeyData[$keyInt] = $value->getValue();
+                } else {
+                    $publicKeyData[$keyInt] = $value;
+                }
+            }
+        }
+    }
 
     // Extract key type and algorithm
     $kty = $publicKeyData[1] ?? null; // Key type

@@ -66,9 +66,11 @@ $pubKeyCredParams = [
 ];
 
 // Authenticator selection criteria
-$authenticatorSelection = AuthenticatorSelectionCriteria::create()
-    ->setResidentKeyRequirement(AuthenticatorSelectionCriteria::RESIDENT_KEY_REQUIREMENT_DISCOURAGED)
-    ->setUserVerification(AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_PREFERRED);
+$authenticatorSelection = AuthenticatorSelectionCriteria::create(
+    null, // authenticatorAttachment (null = no preference)
+    AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_PREFERRED,
+    AuthenticatorSelectionCriteria::RESIDENT_KEY_REQUIREMENT_DISCOURAGED
+);
 
 // Create options
 $options = PublicKeyCredentialCreationOptions::create(
@@ -78,7 +80,6 @@ $options = PublicKeyCredentialCreationOptions::create(
     $pubKeyCredParams
 )
     ->setTimeout((int)($_ENV['WEBAUTHN_TIMEOUT'] ?? 60000))
-    ->excludeCredentials([])
     ->setAuthenticatorSelection($authenticatorSelection)
     ->setAttestation(PublicKeyCredentialCreationOptions::ATTESTATION_CONVEYANCE_PREFERENCE_NONE);
 

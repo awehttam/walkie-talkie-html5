@@ -132,11 +132,18 @@ switch ($action) {
 
         try {
             // Decode and verify credential (similar to registration)
-            $clientDataJSON = base64_decode($credential['response']['clientDataJSON']);
+            // Decode client data JSON (URL-safe base64)
+            $clientDataBase64 = $credential['response']['clientDataJSON'];
+            // Convert URL-safe base64 to standard base64
+            $clientDataBase64 = str_pad(strtr($clientDataBase64, '-_', '+/'), strlen($clientDataBase64) % 4, '=', STR_PAD_RIGHT);
+            $clientDataJSON = base64_decode($clientDataBase64);
             $clientData = json_decode($clientDataJSON, true);
 
-            // Verify challenge
-            if ($clientData['challenge'] !== $challenge) {
+            // Verify challenge - convert both to URL-safe base64 for comparison
+            // The browser returns URL-safe base64 (no padding, - and _ instead of + and /)
+            $challengeUrlSafe = rtrim(strtr($challenge, '+/', '-_'), '=');
+            $clientChallenge = $clientData['challenge'] ?? '';
+            if ($clientChallenge !== $challengeUrlSafe) {
                 throw new Exception('Challenge mismatch');
             }
 
@@ -146,12 +153,45 @@ switch ($action) {
                 throw new Exception('Origin mismatch');
             }
 
-            // Decode attestation object and extract credential
-            $attestationObject = base64_decode($credential['response']['attestationObject']);
+            // Decode attestation object and extract credential (URL-safe base64)
+            $attestationObjectBase64 = $credential['response']['attestationObject'];
+            // Convert URL-safe base64 to standard base64
+            $attestationObjectBase64 = str_pad(strtr($attestationObjectBase64, '-_', '+/'), strlen($attestationObjectBase64) % 4, '=', STR_PAD_RIGHT);
+            $attestationObject = base64_decode($attestationObjectBase64);
             $decoder = new \CBOR\Decoder();
             $stream = new \CBOR\StringStream($attestationObject);
-            $attestationData = $decoder->decode($stream)->getNormalizedData();
-            $authData = $attestationData['authData'];
+            $attestationDataObject = $decoder->decode($stream);
+
+            // Get the map data - CBOR returns a MapObject
+            if (!($attestationDataObject instanceof \CBOR\MapObject)) {
+                throw new Exception('Invalid attestation object format');
+            }
+
+            // Extract authData from CBOR map
+            $authData = null;
+            foreach ($attestationDataObject as $item) {
+                if ($item instanceof \CBOR\MapItem) {
+                    $key = $item->getKey();
+                    $value = $item->getValue();
+
+                    // Get key as string
+                    $keyStr = ($key instanceof \CBOR\TextStringObject) ? $key->getValue() : (string)$key;
+
+                    if ($keyStr === 'authData') {
+                        // Get value as binary
+                        if ($value instanceof \CBOR\ByteStringObject) {
+                            $authData = $value->getValue();
+                        } else {
+                            $authData = (string)$value;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if ($authData === null) {
+                throw new Exception('Invalid attestation object - missing authData');
+            }
 
             // Parse authenticator data
             $counter = unpack('N', substr($authData, 33, 4))[1];
