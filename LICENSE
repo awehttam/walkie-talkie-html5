@@ -1,21 +1,38 @@
-MIT License
+# Dual License
+
+This software is available under two different licenses:
+
+## Open Source License - GPL-3.0
+
+**Free for open source projects**
+
+If you are developing and distributing open source software, you can use this project
+under the terms of the GNU General Public License version 3 (GPL-3.0).
+
+See [LICENSE-GPL.txt](LICENSE-GPL.txt) for the complete GPL-3.0 license text.
+
+Under GPL-3.0, you must:
+- Make your source code available
+- License your project under GPL-3.0 or a compatible license
+- Include copyright and license notices
+
+## Commercial License
+
+**Paid license for commercial/proprietary use**
+
+If you want to use this software in a commercial or proprietary application without
+the obligations of GPL-3.0 (such as open-sourcing your code), you need to purchase
+a commercial license.
+
+Commercial licensing allows you to:
+- Keep your code proprietary
+- Distribute without GPL-3.0 requirements
+- Receive dedicated support
+
+For commercial licensing inquiries, please contact the project maintainer - Matthew Asham - https://www.asham.ca/
+
+---
+
+**Support independent development while building great software.**
 
 Copyright (c) 2025 Matthew Asham
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.

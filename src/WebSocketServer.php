@@ -14,6 +14,7 @@ class WebSocketServer implements MessageComponentInterface
     protected $channels;
     protected $db;
     protected $activeTransmissions; // Buffer for active transmissions
+    protected $trustedProxies = []; // List of trusted proxy IP addresses
 
     // Message history configuration
     protected $maxMessagesPerChannel = 10; // Maximum number of messages to keep per channel
@@ -39,6 +40,15 @@ class WebSocketServer implements MessageComponentInterface
         $maxAge = getenv('MESSAGE_HISTORY_MAX_AGE');
         if ($maxAge !== false && is_numeric($maxAge)) {
             $this->maxMessageAge = (int)$maxAge;
+        }
+
+        // Load trusted proxy IPs from environment variable
+        $trustedProxiesEnv = getenv('TRUSTED_PROXIES');
+        if ($trustedProxiesEnv !== false && !empty($trustedProxiesEnv)) {
+            $this->trustedProxies = array_map('trim', explode(',', $trustedProxiesEnv));
+            echo "Trusted proxies configured: " . implode(', ', $this->trustedProxies) . "\n";
+        } else {
+            echo "No trusted proxies configured - X-Forwarded-For will be ignored\n";
         }
 
         echo "Message history config: Max {$this->maxMessagesPerChannel} messages, Max age {$this->maxMessageAge} seconds\n";
@@ -125,6 +135,25 @@ class WebSocketServer implements MessageComponentInterface
     {
         $this->clients->attach($conn);
         echo "New connection! ({$conn->resourceId})\n";
+    }
+
+    private function getClientIp(ConnectionInterface $conn): string
+    {
+        $remoteAddress = $conn->remoteAddress ?? 'unknown';
+
+        // Only trust X-Forwarded-For if the connection is from a trusted proxy
+        if (!empty($this->trustedProxies) && in_array($remoteAddress, $this->trustedProxies, true)) {
+            $headers = $conn->httpRequest->getHeaders();
+
+            if (isset($headers['X-Forwarded-For'])) {
+                // X-Forwarded-For can contain multiple IPs, get the first one (original client)
+                $ips = array_map('trim', explode(',', $headers['X-Forwarded-For'][0]));
+                return $ips[0];
+            }
+        }
+
+        // Return the direct connection address
+        return $remoteAddress;
     }
 
     public function onMessage(ConnectionInterface $from, $msg)
@@ -309,8 +338,8 @@ class WebSocketServer implements MessageComponentInterface
 
     private function handlePushToTalkStart(ConnectionInterface $conn, string $channel)
     {
-        $remoteAddress = $conn->remoteAddress ?? 'unknown';
-        echo "[TALK START] Channel {$channel} - Client {$conn->resourceId} from {$remoteAddress}\n";
+        $clientIp = $this->getClientIp($conn);
+        echo "[TALK START] Channel {$channel} - Client {$conn->resourceId} from {$clientIp}\n";
 
         $this->broadcastToChannel($channel, [
             'type' => 'user_speaking',
@@ -344,9 +373,9 @@ class WebSocketServer implements MessageComponentInterface
             $audioDataLength = strlen($binaryData);
             $duration = round(($audioDataLength / 2) / $transmission['sampleRate'] * 1000);
 
-            $remoteAddress = $conn->remoteAddress ?? 'unknown';
+            $clientIp = $this->getClientIp($conn);
             $clientId = $transmission['clientId'];
-            echo "[TALK END] Channel {$channel} - Client ID: {$clientId}, Connection: {$conn->resourceId}, IP: {$remoteAddress}, Duration: {$duration}ms\n";
+            echo "[TALK END] Channel {$channel} - Client ID: {$clientId}, Connection: {$conn->resourceId}, IP: {$clientIp}, Duration: {$duration}ms\n";
 
             // Save to database
             $this->saveMessage(

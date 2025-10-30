@@ -2,6 +2,7 @@
     "name": "walkie-talkie/pwa",
     "description": "Embeddable Walkie Talkie Progressive Web App",
     "type": "project",
+    "license": "GPL-3.0-or-later",
     "require": {
         "php": ">=8.1",
         "cboden/ratchet": "^0.4",
