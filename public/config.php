@@ -28,5 +28,10 @@ if (!$websocketUrl) {
 // Return configuration as JSON
 echo json_encode([
     'websocketUrl' => $websocketUrl,
-    'debug' => filter_var($_ENV['DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN)
+    'debug' => filter_var($_ENV['DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN),
+    'anonymousModeEnabled' => filter_var($_ENV['ANONYMOUS_MODE_ENABLED'] ?? true, FILTER_VALIDATE_BOOLEAN),
+    'registrationEnabled' => filter_var($_ENV['REGISTRATION_ENABLED'] ?? true, FILTER_VALIDATE_BOOLEAN),
+    'screenNameMinLength' => (int)($_ENV['SCREEN_NAME_MIN_LENGTH'] ?? 2),
+    'screenNameMaxLength' => (int)($_ENV['SCREEN_NAME_MAX_LENGTH'] ?? 20),
+    'screenNamePattern' => $_ENV['SCREEN_NAME_PATTERN'] ?? '^[a-zA-Z0-9_-]+$'
 ]);
