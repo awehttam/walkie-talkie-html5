@@ -167,13 +167,20 @@ try {
     // Create user in database
     $userDbId = WalkieTalkie\AuthManager::createUser($username);
 
+    // Get transports from credential, default to 'internal' if empty
+    // Windows Hello often doesn't report transports, but it's a platform authenticator
+    $transports = $credential['response']['transports'] ?? [];
+    if (empty($transports)) {
+        $transports = ['internal'];
+    }
+
     // Store credential
     WalkieTalkie\AuthManager::storeCredential($userDbId, [
         'credential_id' => $credentialIdBase64,
         'public_key' => $publicKeyBase64,
         'counter' => $counter,
         'aaguid' => $aaguid,
-        'transports' => $credential['response']['transports'] ?? null,
+        'transports' => $transports,
         'nickname' => $nickname
     ]);
 

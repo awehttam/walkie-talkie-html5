@@ -215,13 +215,20 @@ switch ($action) {
             // Use nickname from session or input
             $finalNickname = $nickname ?? ($_SESSION['webauthn_nickname'] ?? 'New Device');
 
+            // Get transports from credential, default to 'internal' if empty
+            // Windows Hello often doesn't report transports, but it's a platform authenticator
+            $transports = $credential['response']['transports'] ?? [];
+            if (empty($transports)) {
+                $transports = ['internal'];
+            }
+
             // Store credential
             WalkieTalkie\AuthManager::storeCredential($userId, [
                 'credential_id' => $credentialIdBase64,
                 'public_key' => $publicKeyBase64,
                 'counter' => $counter,
                 'aaguid' => $aaguid,
-                'transports' => $credential['response']['transports'] ?? null,
+                'transports' => $transports,
                 'nickname' => $finalNickname
             ]);
 
