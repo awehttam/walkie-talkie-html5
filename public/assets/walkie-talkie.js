@@ -147,9 +147,14 @@ class WalkieTalkie {
 
     promptForScreenName() {
         const screenName = prompt('Choose a screen name (2-20 characters, letters/numbers/underscore/hyphen):');
+
+        // If user cancels, generate a random screen name
         if (!screenName) {
-            alert('Screen name is required');
-            this.promptForScreenName();
+            const randomName = this.generateRandomScreenName();
+            this.screenName = randomName;
+            this.isAnonymous = true;
+            sessionStorage.setItem('anonymous_screen_name', randomName);
+            console.log('Generated random screen name:', this.screenName);
             return;
         }
 
@@ -171,6 +176,17 @@ class WalkieTalkie {
         sessionStorage.setItem('anonymous_screen_name', screenName);
 
         console.log('Anonymous user:', this.screenName);
+    }
+
+    generateRandomScreenName() {
+        const adjectives = ['Quick', 'Silent', 'Bright', 'Cool', 'Swift', 'Bold', 'Clever', 'Brave', 'Calm', 'Wise'];
+        const nouns = ['Fox', 'Wolf', 'Eagle', 'Tiger', 'Bear', 'Hawk', 'Lion', 'Owl', 'Panda', 'Shark'];
+        const randomNum = Math.floor(Math.random() * 1000);
+
+        const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+        const noun = nouns[Math.floor(Math.random() * nouns.length)];
+
+        return `${adjective}${noun}${randomNum}`;
     }
 
     on(event, callback) {
