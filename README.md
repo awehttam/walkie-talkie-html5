@@ -5,10 +5,19 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
 ## Features
 
 - **Real-time Voice Communication**: Push-to-talk functionality with instant audio transmission
+- **WebAuthn/Passkey Authentication**: Passwordless login with biometrics or security keys
+  - Multi-device support (Windows Hello, Touch ID, Android, YubiKey, etc.)
+  - Optional anonymous mode with auto-generated screen names
+  - Secure JWT-based session management
+- **User Identity**: Screen names displayed in messages and history
+  - Unique screen names enforced across authenticated and anonymous users
+  - Persistent screen names for registered users
+  - Auto-generated random names for anonymous users (e.g., "BoldEagle742")
 - **Message History**: Automatic recording and playback of recent transmissions
   - Configurable retention (message count and age limits)
   - Individual and sequential playback controls
-  - Visual history panel with timestamps and user info
+  - Visual history panel with timestamps and user identities
+  - Live updates as users speak
 - **Channel Support**: Multiple channels with isolated message histories
 - **Progressive Web App**: Installable, offline-capable, responsive design
 - **Embeddable**: Can be embedded in iframes or linked directly
@@ -145,12 +154,14 @@ walkie-talkie/
 
 ## How It Works
 
-1. **Connection**: Users connect to the WebSocket server and join a channel
-2. **Push-to-Talk**: Hold the microphone button to start recording
-3. **Audio Transmission**: Audio is captured, encoded as PCM16, converted to base64, and sent via WebSocket
-4. **Broadcasting**: Server broadcasts audio to all channel participants except the sender
-5. **Message Storage**: Complete transmissions are saved to SQLite database with retention policies
-6. **Playback**: Recipients decode and play the audio instantly, with access to message history
+1. **Authentication**: Users can register/login with passkeys or use anonymous mode with a screen name
+2. **Connection**: Users connect to the WebSocket server with their identity (JWT token or screen name)
+3. **Channel Join**: Join a channel to start communicating with others on that channel
+4. **Push-to-Talk**: Hold the microphone button to start recording
+5. **Audio Transmission**: Audio is captured, encoded as PCM16, converted to base64, and sent via WebSocket
+6. **Broadcasting**: Server broadcasts audio to all channel participants with sender's screen name
+7. **Message Storage**: Complete transmissions are saved to SQLite database with user identity and retention policies
+8. **Playback**: Recipients decode and play the audio instantly, with access to message history showing who spoke
 
 ## Browser Support
 
@@ -210,9 +221,10 @@ This application now supports **WebAuthn/passkeys** for passwordless authenticat
 - Manage multiple passkeys from `/passkeys.html`
 
 **Anonymous Users** (if enabled):
-- Choose temporary screen name on first visit
-- Screen name validated for uniqueness
-- Lost on disconnect
+- Prompted to choose a screen name on first visit (or auto-generated if cancelled)
+- Auto-generated names follow pattern: AdjectiveNoun### (e.g., "BoldEagle742")
+- Screen name validated for uniqueness across all users
+- Persists for browser session, lost on disconnect
 
 ### Configuration Options
 
