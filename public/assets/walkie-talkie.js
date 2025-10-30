@@ -129,8 +129,19 @@ class WalkieTalkie {
         }
 
         if (!this.accessToken && this.config.anonymousModeEnabled) {
-            // Prompt for screen name
-            this.promptForScreenName();
+            // Check if we already have a screen name from this session
+            const storedScreenName = sessionStorage.getItem('anonymous_screen_name');
+            if (storedScreenName) {
+                this.screenName = storedScreenName;
+                this.isAnonymous = true;
+                console.log('Restored anonymous user:', this.screenName);
+            } else {
+                // Prompt for screen name only if new session
+                this.promptForScreenName();
+            }
+
+            // Show login/register link for anonymous users if registration is enabled
+            this.showAnonymousUI();
         }
     }
 
@@ -155,6 +166,10 @@ class WalkieTalkie {
 
         this.screenName = screenName;
         this.isAnonymous = true;
+
+        // Store in sessionStorage so it persists across page refreshes in the same session
+        sessionStorage.setItem('anonymous_screen_name', screenName);
+
         console.log('Anonymous user:', this.screenName);
     }
 
@@ -445,12 +460,13 @@ class WalkieTalkie {
                     }
                 }
 
-                // When someone stops speaking, refresh the message history
+                // When ANYONE stops speaking, refresh the message history
+                // This creates a live log of all messages
                 if (!data.speaking) {
                     // Small delay to allow server to save the message
                     setTimeout(() => {
                         this.requestHistory();
-                    }, 500);
+                    }, 100);
                 }
                 break;
 
@@ -810,6 +826,12 @@ class WalkieTalkie {
             channel: this.channel,
             clientId: this.clientId
         }));
+
+        // Refresh history after our own transmission
+        // Delay slightly to allow server to save the message
+        setTimeout(() => {
+            this.requestHistory();
+        }, 200);
 
         console.log('Stopped simple PCM streaming');
     }
@@ -1248,11 +1270,12 @@ class WalkieTalkie {
 
             const timestamp = this.formatTimestamp(parseInt(message.timestamp));
             const duration = this.formatDuration(parseInt(message.duration));
-            const userId = this.formatUserId(message.client_id);
+            // Use screen_name if available, otherwise fall back to formatted client_id
+            const displayName = message.screen_name || this.formatUserId(message.client_id);
 
             messageEl.innerHTML = `
                 <div class="history-message-info">
-                    <span class="history-user">${userId}</span>
+                    <span class="history-user">${this.escapeHtml(displayName)}</span>
                     <span class="history-timestamp">${timestamp}</span>
                     <span class="history-duration">${duration}</span>
                 </div>
@@ -1293,6 +1316,12 @@ class WalkieTalkie {
         // Extract last 4 characters of client ID
         const shortId = clientId.slice(-4);
         return `User #${shortId}`;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     playHistoryMessage(index) {
@@ -1509,6 +1538,22 @@ class WalkieTalkie {
             <button onclick="window.location.href='/passkeys.html'" style="padding: 5px 10px; margin-right: 5px; cursor: pointer;">Passkeys</button>
             <button onclick="walkieTalkie.logout()" style="padding: 5px 10px; cursor: pointer;">Logout</button>
         `;
+
+        // Hide the login/register link
+        const authLink = document.getElementById('auth-link');
+        if (authLink) {
+            authLink.style.display = 'none';
+        }
+    }
+
+    showAnonymousUI() {
+        // Show login/register link for anonymous users if registration is enabled
+        if (this.config.registrationEnabled) {
+            const authLink = document.getElementById('auth-link');
+            if (authLink) {
+                authLink.style.display = 'block';
+            }
+        }
     }
 
     async logout() {
