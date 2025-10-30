@@ -224,15 +224,16 @@ if (file_exists(__DIR__ . '/../templates/header.php')) {
         const urlParams = new URLSearchParams(window.location.search);
         const initialChannel = urlParams.get('channel') || '1';
 
-        const app = new WalkieTalkie({
+        // Make app instance globally accessible for potential future use
+        window.walkieTalkie = new WalkieTalkie({
             channel: initialChannel,
             configUrl: 'config.php'
         });
 
-        app.init();
+        walkieTalkie.init();
 
         // Update URL when channel changes (optional)
-        app.on('channel_changed', (data) => {
+        walkieTalkie.on('channel_changed', (data) => {
             const newUrl = new URL(window.location);
             newUrl.searchParams.set('channel', data.channel);
             window.history.replaceState({}, '', newUrl);
