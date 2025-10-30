@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Walkie Talkie</title>
+    <link rel="stylesheet" href="/assets/style.css">
+    <style>
+        .auth-container {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 30px;
+            background: var(--bg-color, #1a1a1a);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .auth-container h1 {
+            text-align: center;
+            color: var(--text-color, #fff);
+            margin-bottom: 30px;
+        }
+
+        .auth-section {
+            margin-bottom: 40px;
+        }
+
+        .auth-section h2 {
+            color: var(--text-color, #fff);
+            font-size: 1.2em;
+            margin-bottom: 15px;
+        }
+
+        .auth-section input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #444;
+            border-radius: 6px;
+            background: #2a2a2a;
+            color: #fff;
+            font-size: 1em;
+            box-sizing: border-box;
+        }
+
+        .auth-section input:focus {
+            outline: none;
+            border-color: var(--primary-color, #4CAF50);
+        }
+
+        .auth-section button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 6px;
+            background: var(--primary-color, #4CAF50);
+            color: white;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .auth-section button:hover {
+            background: var(--primary-hover, #45a049);
+        }
+
+        .auth-section button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .divider {
+            text-align: center;
+            margin: 30px 0;
+            color: #888;
+            position: relative;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 40%;
+            height: 1px;
+            background: #444;
+        }
+
+        .divider::before {
+            left: 0;
+        }
+
+        .divider::after {
+            right: 0;
+        }
+
+        .error-message {
+            color: #ff5252;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            background: rgba(255, 82, 82, 0.1);
+            border: 1px solid #ff5252;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .info-message {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .loading {
+            text-align: center;
+            color: #888;
+            padding: 20px;
+        }
+
+        .browser-support-warning {
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid #ff9800;
+            color: #ff9800;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .browser-support-warning.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <h1>🎙️ Walkie Talkie</h1>
+
+        <div id="browserWarning" class="browser-support-warning">
+            ⚠️ Your browser may not support passkeys. Please use a modern browser like Chrome, Safari, or Edge.
+        </div>
+
+        <div id="errorMessage" class="error-message"></div>
+
+        <div class="auth-section">
+            <h2>Create Account</h2>
+            <input type="text" id="registerUsername" placeholder="Choose a screen name" maxlength="20" autocomplete="username webauthn">
+            <button id="registerBtn">Register with Passkey</button>
+            <p class="info-message">Use biometrics or security key to create your account</p>
+        </div>
+
+        <div class="divider">OR</div>
+
+        <div class="auth-section">
+            <h2>Login</h2>
+            <input type="text" id="loginUsername" placeholder="Screen name" autocomplete="username webauthn">
+            <button id="loginBtn">Login with Passkey</button>
+            <p class="info-message">Use your existing passkey to sign in</p>
+        </div>
+    </div>
+
+    <script src="/assets/auth.js"></script>
+</body>
+</html>

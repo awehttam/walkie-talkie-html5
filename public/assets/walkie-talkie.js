@@ -16,6 +16,14 @@ class WalkieTalkie {
         this.isConnected = false;
         this.participants = 0;
 
+        // Authentication
+        this.accessToken = null;
+        this.currentUser = null;
+        this.isAnonymous = false;
+        this.screenName = null;
+        this.tokenRefreshTimer = null;
+        this.config = null;
+
         // Track notification rate limiting (1 hour = 3600000ms)
         this.lastNotificationTime = 0;
         this.notificationCooldown = 300; // 5 minutes
@@ -45,6 +53,7 @@ class WalkieTalkie {
     async init() {
         this.setupUI();
         await this.loadConfig();
+        await this.checkAuthentication();
         this.connectWebSocket();
         this.requestMicrophoneAccess();
         this.setupNotifications();
@@ -52,8 +61,8 @@ class WalkieTalkie {
     }
 
     async loadConfig() {
-        if (this.serverUrl) {
-            // Server URL was provided in constructor options
+        if (this.serverUrl && this.config) {
+            // Server URL and config were provided in constructor options
             return;
         }
 
@@ -63,16 +72,105 @@ class WalkieTalkie {
                 throw new Error(`Config fetch failed: ${response.status}`);
             }
 
-            const config = await response.json();
-            this.serverUrl = config.websocketUrl;
+            this.config = await response.json();
+            this.serverUrl = this.config.websocketUrl;
 
-            if (config.debug) {
-                console.log('Debug mode enabled, loaded config:', config);
+            if (this.config.debug) {
+                console.log('Debug mode enabled, loaded config:', this.config);
             }
         } catch (error) {
-            console.warn('Failed to load config, using default WebSocket URL:', error);
+            console.warn('Failed to load config, using defaults:', error);
             this.serverUrl = 'ws://localhost:8080';
+            this.config = {
+                websocketUrl: this.serverUrl,
+                anonymousModeEnabled: true,
+                registrationEnabled: true
+            };
         }
+    }
+
+    async checkAuthentication() {
+        // Check for existing access token
+        this.accessToken = localStorage.getItem('access_token');
+
+        if (this.accessToken) {
+            // Validate and get user info
+            try {
+                const response = await fetch('/auth/user-info.php', {
+                    headers: {
+                        'Authorization': `Bearer ${this.accessToken}`
+                    }
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    this.currentUser = result.user;
+                    this.screenName = result.user.username;
+                    this.showAuthenticatedUI();
+                    this.scheduleTokenRefresh();
+                    console.log('Authenticated as:', this.screenName);
+                } else {
+                    // Token invalid, clear it
+                    localStorage.removeItem('access_token');
+                    this.accessToken = null;
+                }
+            } catch (error) {
+                console.error('Failed to validate token:', error);
+                localStorage.removeItem('access_token');
+                this.accessToken = null;
+            }
+        }
+
+        // Check if anonymous mode allowed
+        if (!this.accessToken && !this.config.anonymousModeEnabled) {
+            // Redirect to login
+            window.location.href = '/login.html';
+            return;
+        }
+
+        if (!this.accessToken && this.config.anonymousModeEnabled) {
+            // Check if we already have a screen name from this session
+            const storedScreenName = sessionStorage.getItem('anonymous_screen_name');
+            if (storedScreenName) {
+                this.screenName = storedScreenName;
+                this.isAnonymous = true;
+                console.log('Restored anonymous user:', this.screenName);
+            } else {
+                // Prompt for screen name only if new session
+                this.promptForScreenName();
+            }
+
+            // Show login/register link for anonymous users if registration is enabled
+            this.showAnonymousUI();
+        }
+    }
+
+    promptForScreenName() {
+        const screenName = prompt('Choose a screen name (2-20 characters, letters/numbers/underscore/hyphen):');
+        if (!screenName) {
+            alert('Screen name is required');
+            this.promptForScreenName();
+            return;
+        }
+
+        // Basic validation
+        const pattern = new RegExp(this.config.screenNamePattern || '^[a-zA-Z0-9_-]+$');
+        const minLength = this.config.screenNameMinLength || 2;
+        const maxLength = this.config.screenNameMaxLength || 20;
+
+        if (screenName.length < minLength || screenName.length > maxLength || !pattern.test(screenName)) {
+            alert(`Invalid screen name. Use ${minLength}-${maxLength} characters (letters, numbers, underscore, hyphen only)`);
+            this.promptForScreenName();
+            return;
+        }
+
+        this.screenName = screenName;
+        this.isAnonymous = true;
+
+        // Store in sessionStorage so it persists across page refreshes in the same session
+        sessionStorage.setItem('anonymous_screen_name', screenName);
+
+        console.log('Anonymous user:', this.screenName);
     }
 
     on(event, callback) {
@@ -230,7 +328,22 @@ class WalkieTalkie {
                 console.log('WebSocket connected');
                 this.isConnected = true;
                 this.updateConnectionStatus('connected');
-                this.joinChannel();
+
+                // Send authentication or screen name
+                if (this.accessToken) {
+                    this.ws.send(JSON.stringify({
+                        type: 'authenticate',
+                        token: this.accessToken
+                    }));
+                } else if (this.isAnonymous && this.screenName) {
+                    this.ws.send(JSON.stringify({
+                        type: 'set_screen_name',
+                        screen_name: this.screenName
+                    }));
+                }
+
+                // Join channel after authentication (will be handled in message handler)
+                // this.joinChannel() will be called after authentication confirmation
                 this.emit('connected');
             };
 
@@ -272,6 +385,26 @@ class WalkieTalkie {
 
     handleWebSocketMessage(data) {
         switch (data.type) {
+            case 'authenticated':
+                console.log('Authenticated as:', data.user.username);
+                this.currentUser = data.user;
+                this.screenName = data.user.username;
+                this.joinChannel();
+                break;
+
+            case 'screen_name_set':
+                console.log('Screen name set to:', data.screen_name);
+                this.screenName = data.screen_name;
+                this.joinChannel();
+                break;
+
+            case 'authentication_required':
+                console.log('Authentication required');
+                if (!this.accessToken) {
+                    window.location.href = '/login.html';
+                }
+                break;
+
             case 'channel_joined':
                 this.participants = data.participants;
                 this.updateParticipantsCount();
@@ -281,6 +414,17 @@ class WalkieTalkie {
             case 'participant_joined':
                 this.participants = data.participants;
                 this.updateParticipantsCount();
+                if (data.screen_name) {
+                    console.log(`${data.screen_name} joined the channel`);
+                }
+                break;
+
+            case 'participant_left':
+                this.participants = data.participants;
+                this.updateParticipantsCount();
+                if (data.screen_name) {
+                    console.log(`${data.screen_name} left the channel`);
+                }
                 break;
 
             case 'audio_data':
@@ -300,8 +444,8 @@ class WalkieTalkie {
                 break;
 
             case 'user_speaking':
-                this.updateSpeakingIndicator(data.speaking);
-                this.emit('speaking', { speaking: data.speaking });
+                this.updateSpeakingIndicator(data.speaking, data.screen_name);
+                this.emit('speaking', { speaking: data.speaking, screen_name: data.screen_name });
 
                 // Notify service worker when someone else starts speaking (not ourselves)
                 // Only send notifications when app is in background or not active
@@ -316,12 +460,13 @@ class WalkieTalkie {
                     }
                 }
 
-                // When someone stops speaking, refresh the message history
+                // When ANYONE stops speaking, refresh the message history
+                // This creates a live log of all messages
                 if (!data.speaking) {
                     // Small delay to allow server to save the message
                     setTimeout(() => {
                         this.requestHistory();
-                    }, 500);
+                    }, 100);
                 }
                 break;
 
@@ -682,6 +827,12 @@ class WalkieTalkie {
             clientId: this.clientId
         }));
 
+        // Refresh history after our own transmission
+        // Delay slightly to allow server to save the message
+        setTimeout(() => {
+            this.requestHistory();
+        }, 200);
+
         console.log('Stopped simple PCM streaming');
     }
 
@@ -964,13 +1115,17 @@ class WalkieTalkie {
         }
     }
 
-    updateSpeakingIndicator(speaking) {
+    updateSpeakingIndicator(speaking, screenName = null) {
         if (!this.speakingIndicator) return;
 
         if (speaking) {
             this.speakingIndicator.classList.add('active');
+            if (screenName) {
+                this.speakingIndicator.textContent = `${screenName} is speaking...`;
+            }
         } else {
             this.speakingIndicator.classList.remove('active');
+            this.speakingIndicator.textContent = '';
         }
     }
 
@@ -1115,11 +1270,12 @@ class WalkieTalkie {
 
             const timestamp = this.formatTimestamp(parseInt(message.timestamp));
             const duration = this.formatDuration(parseInt(message.duration));
-            const userId = this.formatUserId(message.client_id);
+            // Use screen_name if available, otherwise fall back to formatted client_id
+            const displayName = message.screen_name || this.formatUserId(message.client_id);
 
             messageEl.innerHTML = `
                 <div class="history-message-info">
-                    <span class="history-user">${userId}</span>
+                    <span class="history-user">${this.escapeHtml(displayName)}</span>
                     <span class="history-timestamp">${timestamp}</span>
                     <span class="history-duration">${duration}</span>
                 </div>
@@ -1160,6 +1316,12 @@ class WalkieTalkie {
         // Extract last 4 characters of client ID
         const shortId = clientId.slice(-4);
         return `User #${shortId}`;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     playHistoryMessage(index) {
@@ -1314,6 +1476,109 @@ class WalkieTalkie {
     removeHistoryHighlight() {
         const playingElements = document.querySelectorAll('.history-message.playing');
         playingElements.forEach(el => el.classList.remove('playing'));
+    }
+
+    // Authentication helper methods
+
+    scheduleTokenRefresh() {
+        // Refresh token 5 minutes before expiration
+        const expiresIn = 3600; // 1 hour in seconds
+        const refreshIn = (expiresIn - 300) * 1000; // 55 minutes in ms
+
+        if (this.tokenRefreshTimer) {
+            clearTimeout(this.tokenRefreshTimer);
+        }
+
+        this.tokenRefreshTimer = setTimeout(async () => {
+            await this.refreshAccessToken();
+        }, refreshIn);
+    }
+
+    async refreshAccessToken() {
+        try {
+            const response = await fetch('/auth/refresh.php', {
+                method: 'POST',
+                credentials: 'include' // Send refresh token cookie
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                this.accessToken = result.tokens.access_token;
+                localStorage.setItem('access_token', this.accessToken);
+                this.scheduleTokenRefresh();
+                console.log('Access token refreshed');
+            } else {
+                // Refresh failed, redirect to login
+                console.error('Token refresh failed');
+                localStorage.removeItem('access_token');
+                window.location.href = '/login.html';
+            }
+        } catch (error) {
+            console.error('Token refresh error:', error);
+            localStorage.removeItem('access_token');
+            window.location.href = '/login.html';
+        }
+    }
+
+    showAuthenticatedUI() {
+        // Add user menu/controls to UI
+        const container = document.querySelector('.container') || document.body;
+
+        let userMenu = document.getElementById('userMenu');
+        if (!userMenu) {
+            userMenu = document.createElement('div');
+            userMenu.id = 'userMenu';
+            userMenu.className = 'user-menu';
+            userMenu.style.cssText = 'position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 6px; z-index: 1000;';
+            container.appendChild(userMenu);
+        }
+
+        userMenu.innerHTML = `
+            <span style="color: #fff; margin-right: 10px;">👤 ${this.currentUser.username}</span>
+            <button onclick="window.location.href='/passkeys.html'" style="padding: 5px 10px; margin-right: 5px; cursor: pointer;">Passkeys</button>
+            <button onclick="walkieTalkie.logout()" style="padding: 5px 10px; cursor: pointer;">Logout</button>
+        `;
+
+        // Hide the login/register link
+        const authLink = document.getElementById('auth-link');
+        if (authLink) {
+            authLink.style.display = 'none';
+        }
+    }
+
+    showAnonymousUI() {
+        // Show login/register link for anonymous users if registration is enabled
+        if (this.config.registrationEnabled) {
+            const authLink = document.getElementById('auth-link');
+            if (authLink) {
+                authLink.style.display = 'block';
+            }
+        }
+    }
+
+    async logout() {
+        try {
+            await fetch('/auth/logout.php', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`
+                },
+                credentials: 'include'
+            });
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+
+        // Clear local storage
+        localStorage.removeItem('access_token');
+
+        // Clear refresh timer
+        if (this.tokenRefreshTimer) {
+            clearTimeout(this.tokenRefreshTimer);
+        }
+
+        // Reload page
+        window.location.href = '/';
     }
 }
 

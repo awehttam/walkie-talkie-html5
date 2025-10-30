@@ -159,11 +159,97 @@ walkie-talkie/
 - **Safari**: Full support (iOS 14.3+)
 - **Mobile browsers**: Optimized for touch interfaces
 
+## Authentication
+
+This application now supports **WebAuthn/passkeys** for passwordless authentication with optional anonymous mode.
+
+### Quick Setup
+
+1. **Generate JWT Secret**:
+   ```bash
+   openssl rand -base64 64
+   ```
+
+2. **Update your `.env` file**:
+   ```env
+   # WebAuthn Configuration
+   WEBAUTHN_RP_NAME="Walkie Talkie"
+   WEBAUTHN_RP_ID=localhost                    # Change to your domain in production
+   WEBAUTHN_ORIGIN=http://localhost:3000       # Change to your URL in production
+
+   # JWT Configuration
+   JWT_SECRET=<your-generated-secret-here>
+   JWT_ACCESS_EXPIRATION=3600                  # 1 hour
+   JWT_REFRESH_EXPIRATION=604800               # 7 days
+
+   # Authentication Settings
+   ANONYMOUS_MODE_ENABLED=true                 # Allow unauthenticated users
+   REGISTRATION_ENABLED=true                   # Allow new user registration
+   ```
+
+3. **Run database migration**:
+   ```bash
+   php migrations/001_add_authentication.php
+   ```
+
+### Features
+
+- **Passwordless Login**: Use biometrics (fingerprint, face ID) or security keys
+- **Multi-device Support**: Register multiple passkeys per account (phone, laptop, YubiKey, etc.)
+- **Anonymous Mode**: Optional guest access with temporary screen names
+- **Unique Screen Names**: Enforced across all users (registered + anonymous)
+- **JWT Tokens**: Secure, stateless session management
+- **Automatic Refresh**: Tokens refresh automatically before expiration
+
+### User Experience
+
+**Registered Users**:
+- Visit `/login.html` to create account or login
+- Use biometrics or security key for authentication
+- Persistent screen name across sessions
+- Manage multiple passkeys from `/passkeys.html`
+
+**Anonymous Users** (if enabled):
+- Choose temporary screen name on first visit
+- Screen name validated for uniqueness
+- Lost on disconnect
+
+### Configuration Options
+
+```env
+# Disable anonymous mode (require login)
+ANONYMOUS_MODE_ENABLED=false
+
+# Disable new registrations (existing users only)
+REGISTRATION_ENABLED=false
+
+# Screen name rules
+SCREEN_NAME_MIN_LENGTH=2
+SCREEN_NAME_MAX_LENGTH=20
+SCREEN_NAME_PATTERN=^[a-zA-Z0-9_-]+$
+```
+
+### Important Notes
+
+- **HTTPS Required**: WebAuthn only works over HTTPS (except localhost)
+- **RP ID**: Must match your domain exactly (no port, no protocol)
+  - For `example.com` → use `WEBAUTHN_RP_ID=example.com`
+  - For `sub.example.com` → use `WEBAUTHN_RP_ID=sub.example.com`
+- **Origin**: Must include protocol and port
+  - For `https://example.com` → use `WEBAUTHN_ORIGIN=https://example.com`
+  - For `https://example.com:8443` → use `WEBAUTHN_ORIGIN=https://example.com:8443`
+
+For detailed implementation guide, see [docs/WEBAUTHN.md](docs/WEBAUTHN.md)
+
 ## Security Considerations
 
-- HTTPS required for microphone access in production
+- **HTTPS required** for microphone access and WebAuthn in production
+- **JWT Secret**: Generate strong secret, never commit to version control
+- **Passkeys**: Phishing-resistant, private keys never leave device
+- **Token Security**: Access tokens in localStorage, refresh tokens in HTTP-only cookies
 - Configure CORS headers for cross-origin embedding
-- Consider implementing user authentication for production use
+- Rate limiting on authentication endpoints (5 attempts per 5 minutes)
+- All database queries use prepared statements (SQL injection protection)
 
 ## Production Deployment
 
