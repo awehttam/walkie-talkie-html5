@@ -136,6 +136,51 @@ The CLI tools enable:
 
 Example audio files are provided in `examples/audio/` for testing and reference.
 
+### Generating JWT Tokens (generate-token.php)
+
+Generate JWT tokens for authenticated users and create service accounts for automation:
+
+```bash
+# List all registered users
+php cli/generate-token.php --list
+
+# Generate token for an existing user
+php cli/generate-token.php username
+
+# Create a service account and generate token (for bots/automation)
+php cli/generate-token.php --create AudioBot
+php cli/generate-token.php --create NotificationSystem
+```
+
+**Service Accounts**:
+- **Purpose**: Bot accounts for automated announcements and CLI tools
+- **No Passkey Required**: Service accounts don't need WebAuthn credentials
+- **Same Permissions**: Can send audio and join channels like regular users
+- **Persistent**: Remains in database, generate new tokens as needed
+
+**Prerequisites**:
+- `JWT_SECRET` must be configured in `.env`
+- For regular users: Must be registered via `/login.html` with WebAuthn/passkey
+- For service accounts: Use `--create` flag to create instantly
+
+**Token Information**:
+- Default expiration: 1 hour (configurable via `JWT_ACCESS_EXPIRATION`)
+- Tokens are tied to specific user accounts
+- Include username and user ID in payload
+- Generate new tokens when expired
+
+**Example Workflow**:
+```bash
+# Create a bot account
+php cli/generate-token.php --create AudioBot
+
+# Use the token to send announcements
+php cli/walkie-cli.php send announcement.wav --channel 1 --token "eyJhbG..."
+
+# Later, generate a new token for the same account
+php cli/generate-token.php AudioBot
+```
+
 ### Sending Audio (walkie-cli.php)
 
 Send pre-recorded audio files to channels for announcements or notifications:
@@ -285,6 +330,7 @@ walkie-talkie/
 ├── cli/
 │   ├── walkie-cli.php     # CLI tool for sending audio
 │   ├── welcome-manager.php # CLI tool for managing welcome messages
+│   ├── generate-token.php  # JWT token generator for authenticated users
 │   └── lib/
 │       ├── AudioProcessor.php   # Audio format handling
 │       ├── WebSocketClient.php  # WebSocket client
