@@ -1599,22 +1599,19 @@ class WalkieTalkie {
     }
 
     showAuthenticatedUI() {
-        // Add user menu/controls to UI
-        const container = document.querySelector('.container') || document.body;
-
+        // Add user menu/controls to UI - append directly to body to avoid z-index issues
         let userMenu = document.getElementById('userMenu');
         if (!userMenu) {
             userMenu = document.createElement('div');
             userMenu.id = 'userMenu';
             userMenu.className = 'user-menu';
-            userMenu.style.cssText = 'position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 6px; z-index: 1000;';
-            container.appendChild(userMenu);
+            document.body.appendChild(userMenu);
         }
 
         userMenu.innerHTML = `
-            <span style="color: #fff; margin-right: 10px;">👤 ${this.currentUser.username}</span>
-            <button onclick="window.location.href='/passkeys.html'" style="padding: 5px 10px; margin-right: 5px; cursor: pointer;">Passkeys</button>
-            <button onclick="walkieTalkie.logout()" style="padding: 5px 10px; cursor: pointer;">Logout</button>
+            <span class="user-menu-username">👤 ${this.currentUser.username}</span>
+            <button onclick="window.location.href='/passkeys.html'" class="user-menu-btn">Passkeys</button>
+            <button onclick="walkieTalkie.logout()" class="user-menu-btn">Logout</button>
         `;
 
         // Hide the login/register link
@@ -1625,12 +1622,28 @@ class WalkieTalkie {
     }
 
     showAnonymousUI() {
-        // Show login/register link for anonymous users if registration is enabled
+        // Show user menu for anonymous users with screen name and register link
+        let userMenu = document.getElementById('userMenu');
+        if (!userMenu) {
+            userMenu = document.createElement('div');
+            userMenu.id = 'userMenu';
+            userMenu.className = 'user-menu';
+            document.body.appendChild(userMenu);
+        }
+
+        // Build menu HTML based on whether registration is enabled
+        let menuHTML = `<span class="user-menu-username">👤 ${this.screenName || 'Anonymous'}</span>`;
+
         if (this.config.registrationEnabled) {
-            const authLink = document.getElementById('auth-link');
-            if (authLink) {
-                authLink.style.display = 'block';
-            }
+            menuHTML += `<button onclick="window.location.href='/login.html'" class="user-menu-btn user-menu-btn-primary">Register / Login</button>`;
+        }
+
+        userMenu.innerHTML = menuHTML;
+
+        // Hide the old auth-link if it exists
+        const authLink = document.getElementById('auth-link');
+        if (authLink) {
+            authLink.style.display = 'none';
         }
     }
 

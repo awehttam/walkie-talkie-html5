@@ -657,3 +657,75 @@ input[type="range"]:focus-visible {
 .auth-link-btn:hover {
     background: rgba(255, 255, 255, 0.3);
 }
+
+/* User menu (logged in state) */
+.user-menu {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.85);
+    padding: 12px 16px;
+    border-radius: 8px;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+}
+
+.user-menu-username {
+    color: #fff;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.user-menu-btn {
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.user-menu-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
+}
+
+.user-menu-btn:active {
+    transform: translateY(0);
+}
+
+.user-menu-btn-primary {
+    background: rgba(33, 150, 243, 0.8);
+    border-color: rgba(33, 150, 243, 0.5);
+}
+
+.user-menu-btn-primary:hover {
+    background: rgba(33, 150, 243, 1);
+    border-color: rgba(33, 150, 243, 0.8);
+}
+
+@media (max-width: 480px) {
+    .user-menu {
+        top: 5px;
+        right: 5px;
+        padding: 8px 12px;
+        gap: 8px;
+    }
+
+    .user-menu-username {
+        font-size: 0.8rem;
+    }
+
+    .user-menu-btn {
+        padding: 5px 10px;
+        font-size: 0.75rem;
+    }
+}
