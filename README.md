@@ -19,10 +19,12 @@ A real-time voice communication Progressive Web App built with PHP, designed to 
   - Visual history panel with timestamps and user identities
   - Live updates as users speak
 - **Channel Support**: Multiple channels with isolated message histories
-- **CLI Audio Tools**: Command-line utilities for sending audio and managing welcome messages
-  - Send pre-recorded audio to channels (announcements, notifications)
-  - Automated welcome messages on server connect or channel join
-  - Support for WAV files and raw PCM16 audio
+- **CLI Audio Tools**: Powerful command-line utilities for automation and management
+  - **Audio Sender**: Programmatically send pre-recorded audio to any channel
+  - **Welcome Messages**: Automated greetings on user connect or channel join
+  - **Bot Integration**: Create audio bots for announcements and automated responses
+  - **Multiple Formats**: Support for WAV files and raw PCM16 audio
+  - **Example Audio**: Sample files included for testing (tones, notifications, welcome messages)
 - **Progressive Web App**: Installable, offline-capable, responsive design
 - **Embeddable**: Can be embedded in iframes or linked directly
 - **Cross-platform**: Works on desktop and mobile devices
@@ -122,7 +124,17 @@ Embed in an iframe:
 
 ## CLI Tools
 
-The application includes command-line utilities for sending audio and managing welcome messages.
+The application includes powerful command-line utilities for programmatic audio management and automated announcements.
+
+### Overview
+
+The CLI tools enable:
+- **Automated Announcements**: Send pre-recorded audio to channels (system alerts, notifications, scheduled messages)
+- **Welcome Messages**: Greet users automatically when they connect or join channels
+- **Bot Integration**: Create audio bots for announcements, time checks, or automated responses
+- **Testing**: Inject test audio for development and quality assurance
+
+Example audio files are provided in `examples/audio/` for testing and reference.
 
 ### Sending Audio (walkie-cli.php)
 
@@ -204,6 +216,32 @@ php cli/welcome-manager.php stats
 - `channel_join` - Plays when user joins a channel
 - `both` - Plays on both events
 
+**Features**:
+- Multiple welcome messages per trigger type
+- Channel-specific or server-wide messages
+- Enable/disable messages without deleting
+- Playback statistics and testing tools
+- Automated playback on user events
+
+**Example Audio Files**:
+
+The `examples/audio/` directory includes sample files to get started:
+
+```
+examples/audio/
+├── welcome/
+│   ├── server-welcome.wav          # General server greeting
+│   ├── server-welcome-tones.wav    # Tone-based welcome
+│   ├── channel1-welcome.wav        # Channel 1 specific
+│   └── channel2-welcome.wav        # Channel 2 specific
+└── announcements/
+    ├── notification.wav             # Generic notification sound
+    ├── test-tone-440hz.wav         # A4 test tone
+    └── test-tone-1000hz.wav        # 1kHz test tone
+```
+
+Copy these to `data/audio/` and reference them in your welcome message configuration.
+
 **Environment Variables**:
 ```env
 WELCOME_ENABLED=true                    # Enable/disable welcome messages
@@ -211,6 +249,12 @@ CLI_DEFAULT_WEBSOCKET_URL=ws://localhost:8080
 CLI_DEFAULT_SAMPLE_RATE=48000
 CLI_DEFAULT_CHUNK_SIZE=4096
 ```
+
+**Use Cases**:
+- Greet new users with instructions or server rules
+- Play channel-specific announcements (e.g., "Welcome to Tech Support")
+- Add audio branding to your walkie talkie instance
+- Provide audible feedback for successful authentication
 
 ## Architecture
 
