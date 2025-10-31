@@ -75,9 +75,10 @@ class WalkieTalkieDaemon {
         }
     }
 
-    public function start() {
+    public function start($complainIfRunning=true) {
         if ($this->isRunning()) {
-            $this->log("Daemon already running, exiting", true); // true = only log to file in quiet mode
+            if($complainIfRunning)
+                $this->log("Daemon already running, exiting");
             exit(0);
         }
 
@@ -199,7 +200,7 @@ $command = $args[1] ?? 'start';
 
 switch ($command) {
     case 'start':
-        $daemon->start();
+        $daemon->start(!$quiet);
         break;
     case 'stop':
         $daemon->stop();
@@ -211,10 +212,10 @@ switch ($command) {
         break;
     case 'status':
         if ($daemon->isRunning()) {
-            if (!$quiet) echo "Daemon is running\n";
+            echo "Daemon is running\n";
             exit(0);
         } else {
-            if (!$quiet) echo "Daemon is not running\n";
+            echo "Daemon is not running\n";
             exit(1);
         }
         break;
