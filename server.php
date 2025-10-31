@@ -39,8 +39,10 @@ class WalkieTalkieDaemon {
     private $host;
     private $port;
     private $debug;
+    private $quiet;
 
-    public function __construct() {
+    public function __construct($quiet = false) {
+        $this->quiet = $quiet;
         // Load environment variables
         if (file_exists(__DIR__ . '/.env')) {
             $dotenv = Dotenv::createImmutable(__DIR__);
@@ -75,7 +77,7 @@ class WalkieTalkieDaemon {
 
     public function start() {
         if ($this->isRunning()) {
-            $this->log("Daemon already running, exiting");
+            $this->log("Daemon already running, exiting", true); // true = only log to file in quiet mode
             exit(0);
         }
 
@@ -168,22 +170,32 @@ class WalkieTalkieDaemon {
         }
     }
 
-    private function log($message) {
+    private function log($message, $quietOk = false) {
         $timestamp = date('Y-m-d H:i:s');
         $logMessage = "[$timestamp] $message\n";
         file_put_contents($this->logFile, $logMessage, FILE_APPEND | LOCK_EX);
 
-        // Also echo to stdout if not running as daemon
-        if (PHP_SAPI === 'cli' && !$this->isRunning()) {
-            echo $logMessage;
+        // Echo to console unless:
+        // 1. We're in quiet mode AND the message allows quiet suppression
+        // Note: We always log to file regardless of quiet mode
+        if (PHP_SAPI === 'cli') {
+            if (!$this->quiet || !$quietOk) {
+                echo $logMessage;
+            }
         }
     }
 }
 
 // Handle command line arguments
-$daemon = new WalkieTalkieDaemon();
+$quiet = in_array('--quiet', $argv) || in_array('-q', $argv);
+$daemon = new WalkieTalkieDaemon($quiet);
 
-$command = $argv[1] ?? 'start';
+// Remove quiet flags from argv for command parsing
+$args = array_values(array_filter($argv, function($arg) {
+    return $arg !== '--quiet' && $arg !== '-q';
+}));
+
+$command = $args[1] ?? 'start';
 
 switch ($command) {
     case 'start':
@@ -199,14 +211,16 @@ switch ($command) {
         break;
     case 'status':
         if ($daemon->isRunning()) {
-            echo "Daemon is running\n";
+            if (!$quiet) echo "Daemon is running\n";
             exit(0);
         } else {
-            echo "Daemon is not running\n";
+            if (!$quiet) echo "Daemon is not running\n";
             exit(1);
         }
         break;
     default:
-        echo "Usage: php server.php {start|stop|restart|status}\n";
+        echo "Usage: php server.php {start|stop|restart|status} [--quiet|-q]\n";
+        echo "\nOptions:\n";
+        echo "  --quiet, -q    Suppress 'already running' messages (useful for cron)\n";
         exit(1);
 }

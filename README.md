@@ -87,10 +87,11 @@ brew install php
 
    **Daemon commands:**
    ```bash
-   php server.php start    # Start daemon
-   php server.php stop     # Stop daemon
-   php server.php restart  # Restart daemon
-   php server.php status   # Check status
+   php server.php start           # Start daemon
+   php server.php stop            # Stop daemon
+   php server.php restart         # Restart daemon
+   php server.php status          # Check status
+   php server.php start --quiet   # Start with suppressed "already running" message (for cron)
    ```
 
 4. **Serve the Web Files**
@@ -474,11 +475,13 @@ For production environments, set up the WebSocket server to run automatically:
    Add these lines (update path to your installation):
    ```cron
    # Start daemon at system reboot
-   @reboot cd /path/to/walkie-talkie && php server.php start
+   @reboot cd /path/to/walkie-talkie && php server.php start --quiet
 
-   # Check every 5 minutes and start if not running
-   */5 * * * * cd /path/to/walkie-talkie && php server.php start
+   # Check every 5 minutes and start if not running (quiet mode suppresses "already running" spam)
+   */5 * * * * cd /path/to/walkie-talkie && php server.php start --quiet
    ```
+
+   **Note**: The `--quiet` flag suppresses console output when the daemon is already running, preventing cron email spam while still logging to `walkie-talkie.log`.
 
 2. **Log files**:
    - Daemon logs: `walkie-talkie.log`
