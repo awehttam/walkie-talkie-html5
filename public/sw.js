@@ -73,7 +73,7 @@ self.addEventListener('message', (event) => {
       break;
 
     case 'TRANSMISSION_STARTED':
-      if (!isAppActive && hasNotificationPermission && data.channel === lastActiveChannel) {
+      if (!isAppActive && hasNotificationPermission) {
         showTransmissionNotification(data.channel);
       }
       break;

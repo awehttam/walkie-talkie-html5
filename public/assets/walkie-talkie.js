@@ -24,9 +24,9 @@ class WalkieTalkie {
         this.tokenRefreshTimer = null;
         this.config = null;
 
-        // Track notification rate limiting (1 hour = 3600000ms)
+        // Track notification rate limiting (5 minutes = 300000ms)
         this.lastNotificationTime = 0;
-        this.notificationCooldown = 300; // 5 minutes
+        this.notificationCooldown = 300000; // 5 minutes
 
         // Track when we're speaking to prevent self-notifications
         this.isSpeaking = false;
