@@ -1,6 +1,6 @@
 # Walkie Talkie PWA
 
-A real-time voice communication Progressive Web App built with PHP, designed to be easily embeddable in third-party websites.
+A real-time voice communication Progressive Web App built with PHP.
 
 ## Features
 
