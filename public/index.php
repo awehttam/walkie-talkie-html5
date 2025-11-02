@@ -50,6 +50,9 @@ if (file_exists(__DIR__ . '/../templates/header.php')) {
 }
 ?>
     <div id="app">
+        <!-- Notification container for error messages -->
+        <div id="notification-container" class="notification-container"></div>
+
         <header class="header">
             <h1>🗣️ Walkie Talkie</h1>
             <div class="channel-info">

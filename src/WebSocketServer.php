@@ -40,6 +40,7 @@ class WebSocketServer implements MessageComponentInterface
     protected $db;
     protected $activeTransmissions; // Buffer for active transmissions
     protected $trustedProxies = []; // List of trusted proxy IP addresses
+    protected $pluginManager; // Plugin manager instance
 
     // Message history configuration
     protected $maxMessagesPerChannel = 10; // Maximum number of messages to keep per channel
@@ -53,11 +54,12 @@ class WebSocketServer implements MessageComponentInterface
     // Welcome messages
     protected $welcomeMessages = []; // Cached welcome messages by trigger type
 
-    public function __construct()
+    public function __construct(?PluginManager $pluginManager = null)
     {
         $this->clients = new SplObjectStorage;
         $this->channels = ['1' => new SplObjectStorage];
         $this->activeTransmissions = [];
+        $this->pluginManager = $pluginManager;
         $this->loadConfiguration();
         $this->initDatabase();
         $this->loadWelcomeMessages();
@@ -312,6 +314,17 @@ class WebSocketServer implements MessageComponentInterface
 
     public function onOpen(ConnectionInterface $conn)
     {
+        // Execute plugin hook
+        $allowConnection = true;
+        if ($this->pluginManager) {
+            $this->pluginManager->executeHook('plugin.connection.open', $conn, $allowConnection);
+        }
+
+        if (!$allowConnection) {
+            $conn->close();
+            return;
+        }
+
         $this->clients->attach($conn);
         echo "New connection! ({$conn->resourceId})\n";
 
@@ -348,6 +361,16 @@ class WebSocketServer implements MessageComponentInterface
         $data = json_decode($msg, true);
 
         if (!$data) return;
+
+        // Execute plugin hook for incoming messages
+        $shouldProcess = true;
+        if ($this->pluginManager) {
+            $this->pluginManager->executeHook('plugin.message.receive', $from, $data, $shouldProcess);
+        }
+
+        if (!$shouldProcess) {
+            return;
+        }
 
         switch ($data['type']) {
             case 'authenticate':
@@ -392,6 +415,11 @@ class WebSocketServer implements MessageComponentInterface
     {
         // Get identity before cleanup for logging
         $identity = $this->getConnectionIdentity($conn);
+
+        // Execute plugin hook
+        if ($this->pluginManager && $identity) {
+            $this->pluginManager->executeHook('plugin.connection.close', $conn, $identity);
+        }
 
         // Clean up any active transmissions for this connection
         foreach (array_keys($this->activeTransmissions) as $key) {
@@ -451,12 +479,32 @@ class WebSocketServer implements MessageComponentInterface
             return;
         }
 
+        // Execute plugin hook
+        $allowJoin = true;
+        if ($this->pluginManager) {
+            $this->pluginManager->executeHook('plugin.channel.join', $conn, $channelId, $identity, $allowJoin);
+        }
+
+        if (!$allowJoin) {
+            $conn->send(json_encode([
+                'type' => 'error',
+                'message' => 'Access to this channel is denied'
+            ]));
+            return;
+        }
+
         // Remove from all other channels first
         $this->removeFromAllChannels($conn);
 
         // Create channel if it doesn't exist
-        if (!isset($this->channels[$channelId])) {
+        $isNewChannel = !isset($this->channels[$channelId]);
+        if ($isNewChannel) {
             $this->channels[$channelId] = new SplObjectStorage;
+
+            // Execute plugin hook for new channel
+            if ($this->pluginManager) {
+                $this->pluginManager->executeHook('plugin.channel.created', $channelId);
+            }
         }
 
         // Add to new channel
@@ -483,6 +531,13 @@ class WebSocketServer implements MessageComponentInterface
     private function leaveChannel(ConnectionInterface $conn, string $channelId)
     {
         if (isset($this->channels[$channelId]) && $this->channels[$channelId]->contains($conn)) {
+            $identity = $this->getConnectionIdentity($conn);
+
+            // Execute plugin hook
+            if ($this->pluginManager && $identity) {
+                $this->pluginManager->executeHook('plugin.channel.leave', $conn, $channelId, $identity);
+            }
+
             $this->channels[$channelId]->detach($conn);
 
             $conn->send(json_encode([
@@ -497,6 +552,11 @@ class WebSocketServer implements MessageComponentInterface
                     'participants' => count($this->channels[$channelId])
                 ]);
             } else {
+                // Execute plugin hook for empty channel
+                if ($this->pluginManager) {
+                    $this->pluginManager->executeHook('plugin.channel.empty', $channelId);
+                }
+
                 // Remove empty channel
                 unset($this->channels[$channelId]);
             }
@@ -575,6 +635,16 @@ class WebSocketServer implements MessageComponentInterface
         $identity = $this->getConnectionIdentity($conn);
         $clientIp = $this->getClientIp($conn);
 
+        // Execute plugin hook
+        $allowTransmission = true;
+        if ($this->pluginManager && $identity) {
+            $this->pluginManager->executeHook('plugin.audio.transmit.start', $conn, $channel, $identity, $allowTransmission);
+        }
+
+        if (!$allowTransmission) {
+            return; // Plugin blocked the transmission
+        }
+
         $screenName = $identity ? $identity['screen_name'] : 'unknown';
         echo "[TALK START] Channel {$channel} - {$screenName} (Client {$conn->resourceId}) from {$clientIp}\n";
 
@@ -628,6 +698,18 @@ class WebSocketServer implements MessageComponentInterface
             $clientId = $transmission['clientId'];
             $screenName = $identity ? $identity['screen_name'] : 'unknown';
             echo "[TALK END] Channel {$channel} - {$screenName} (Client ID: {$clientId}, Connection: {$conn->resourceId}, IP: {$clientIp}), Duration: {$duration}ms\n";
+
+            // Prepare audio data for plugins
+            $audioData = [
+                'data' => $completeAudio,
+                'sample_rate' => $transmission['sampleRate'],
+                'duration' => $duration
+            ];
+
+            // Execute plugin hook
+            if ($this->pluginManager && $identity) {
+                $this->pluginManager->executeHook('plugin.audio.transmit.end', $conn, $channel, $identity, $audioData);
+            }
 
             // Save to database
             $this->saveMessage(
@@ -776,6 +858,14 @@ class WebSocketServer implements MessageComponentInterface
         }
     }
 
+    /**
+     * Public method to allow plugin manager to broadcast messages
+     */
+    public function broadcastToChannelPublic(string $channelId, array $message): void
+    {
+        $this->broadcastToChannel($channelId, $message);
+    }
+
     // Authentication helper methods
 
     private function requireAuthentication(): bool
@@ -808,6 +898,17 @@ class WebSocketServer implements MessageComponentInterface
         // Add screen name to active set
         $this->activeScreenNames[$userData['username']] = true;
 
+        $identity = [
+            'type' => 'authenticated',
+            'user_id' => (int)$userData['sub'],
+            'screen_name' => $userData['username']
+        ];
+
+        // Execute plugin hook
+        if ($this->pluginManager) {
+            $this->pluginManager->executeHook('plugin.connection.authenticate', $conn, $identity);
+        }
+
         $conn->send(json_encode([
             'type' => 'authenticated',
             'user' => [
@@ -836,6 +937,18 @@ class WebSocketServer implements MessageComponentInterface
             return;
         }
 
+        // Execute plugin hook for screen name validation
+        $isValid = true;
+        $errorMessage = 'Invalid screen name';
+        if ($this->pluginManager) {
+            $this->pluginManager->executeHook('plugin.screen_name.validate', $screenName, $conn, $isValid, $errorMessage);
+        }
+
+        if (!$isValid) {
+            $conn->send(json_encode(['type' => 'error', 'message' => $errorMessage]));
+            return;
+        }
+
         // Validate screen name
         if (!AuthManager::validateScreenName($screenName)) {
             $conn->send(json_encode(['type' => 'error', 'message' => 'Invalid screen name']));
@@ -855,6 +968,17 @@ class WebSocketServer implements MessageComponentInterface
         // Store anonymous session
         $this->anonymousSessions[$conn->resourceId] = $screenName;
         $this->activeScreenNames[$screenName] = true;
+
+        $identity = [
+            'type' => 'anonymous',
+            'user_id' => null,
+            'screen_name' => $screenName
+        ];
+
+        // Execute plugin hook for authentication (anonymous)
+        if ($this->pluginManager) {
+            $this->pluginManager->executeHook('plugin.connection.authenticate', $conn, $identity);
+        }
 
         $conn->send(json_encode([
             'type' => 'screen_name_set',

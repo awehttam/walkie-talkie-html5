@@ -551,6 +551,12 @@ class WalkieTalkie {
             case 'history_response':
                 this.handleHistoryResponse(data.messages);
                 break;
+
+            case 'error':
+                // Handle error messages from server (e.g., rate limiting)
+                console.error('Server error:', data.message);
+                this.showErrorNotification(data.message);
+                break;
         }
     }
 
@@ -1191,6 +1197,62 @@ class WalkieTalkie {
                     break;
             }
         }
+    }
+
+    showErrorNotification(message, type = 'error', duration = 5000) {
+        const container = document.getElementById('notification-container');
+        if (!container) return;
+
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+
+        // Choose icon based on type
+        let icon = '⚠️';
+        switch (type) {
+            case 'success':
+                icon = '✓';
+                break;
+            case 'warning':
+                icon = '⚠️';
+                break;
+            case 'info':
+                icon = 'ℹ️';
+                break;
+            case 'error':
+            default:
+                icon = '✕';
+                break;
+        }
+
+        notification.innerHTML = `
+            <span class="notification-icon">${icon}</span>
+            <span class="notification-message">${message}</span>
+            <button class="notification-close" aria-label="Close">×</button>
+        `;
+
+        // Add to container
+        container.appendChild(notification);
+
+        // Close button handler
+        const closeBtn = notification.querySelector('.notification-close');
+        closeBtn.addEventListener('click', () => {
+            this.removeNotification(notification);
+        });
+
+        // Auto-remove after duration
+        if (duration > 0) {
+            setTimeout(() => {
+                this.removeNotification(notification);
+            }, duration);
+        }
+    }
+
+    removeNotification(notification) {
+        notification.classList.add('hiding');
+        setTimeout(() => {
+            notification.remove();
+        }, 300); // Match animation duration
     }
 
     updateSpeakingIndicator(speaking, screenName = null) {

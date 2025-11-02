@@ -31,6 +31,7 @@ use Ratchet\Server\IoServer;
 use Ratchet\Http\HttpServer;
 use Ratchet\WebSocket\WsServer;
 use WalkieTalkie\WebSocketServer;
+use WalkieTalkie\PluginManager;
 use Dotenv\Dotenv;
 
 class WalkieTalkieDaemon {
@@ -148,11 +149,43 @@ class WalkieTalkieDaemon {
 
     private function runServer() {
         try {
+            // Initialize plugin manager
+            $pluginManager = null;
+            $pluginsEnabled = filter_var($_ENV['PLUGINS_ENABLED'] ?? 'true', FILTER_VALIDATE_BOOLEAN);
+
+            if ($pluginsEnabled) {
+                $this->log("Initializing plugin system...");
+                $pluginsPath = __DIR__ . '/' . ($_ENV['PLUGINS_PATH'] ?? 'plugins/');
+                $pluginManager = new PluginManager($pluginsPath);
+
+                // Load plugins from directory
+                $pluginManager->loadPluginsFromDirectory();
+
+                // Initialize all plugins
+                $pluginManager->initializeAll();
+            } else {
+                $this->log("Plugin system disabled");
+            }
+
+            // Create WebSocket server with plugin manager
+            $wsServer = new WebSocketServer($pluginManager);
+
+            // Pass server instance and database connection to plugin manager if plugins are enabled
+            if ($pluginManager) {
+                $pluginManager->setServer($wsServer);
+
+                if (property_exists($wsServer, 'db')) {
+                    $reflection = new ReflectionClass($wsServer);
+                    $dbProperty = $reflection->getProperty('db');
+                    $dbProperty->setAccessible(true);
+                    $db = $dbProperty->getValue($wsServer);
+                    $pluginManager->setDatabase($db);
+                }
+            }
+
             $server = IoServer::factory(
                 new HttpServer(
-                    new WsServer(
-                        new WebSocketServer()
-                    )
+                    new WsServer($wsServer)
                 ),
                 $this->port,
                 $this->host
@@ -161,6 +194,13 @@ class WalkieTalkieDaemon {
             $this->log("Walkie Talkie WebSocket server started successfully");
             if ($this->debug) {
                 $this->log("Debug mode enabled");
+            }
+
+            // Register shutdown handler for plugins
+            if ($pluginManager) {
+                register_shutdown_function(function() use ($pluginManager) {
+                    $pluginManager->shutdownAll();
+                });
             }
 
             $server->run();
