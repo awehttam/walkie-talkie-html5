@@ -1,0 +1,26 @@
+{
+    "name": "hello-world",
+    "version": "1.0.0",
+    "description": "Simple hello world plugin demonstrating the plugin system",
+    "author": "Walkie-Talkie Team",
+    "license": "AGPL-3.0-or-later",
+    "main": "HelloWorldPlugin.php",
+    "namespace": "WalkieTalkie\\Plugins\\HelloWorld",
+    "requires": {
+        "php": ">=8.1",
+        "walkie-talkie": ">=1.0.0"
+    },
+    "config": {
+        "enabled": false,
+        "autoload": true,
+        "settings": {
+            "greeting_message": "Hello from the plugin system!"
+        }
+    },
+    "hooks": [
+        "plugin.server.init",
+        "plugin.connection.authenticate"
+    ],
+    "permissions": [],
+    "dependencies": []
+}

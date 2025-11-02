@@ -1,0 +1,29 @@
+{
+    "name": "rate-limiter",
+    "version": "1.0.0",
+    "description": "Prevents users from transmitting too frequently to avoid spam",
+    "author": "Walkie-Talkie Team",
+    "license": "AGPL-3.0-or-later",
+    "main": "RateLimiterPlugin.php",
+    "namespace": "WalkieTalkie\\Plugins\\RateLimiter",
+    "requires": {
+        "php": ">=8.1",
+        "walkie-talkie": ">=1.0.0"
+    },
+    "config": {
+        "enabled": true,
+        "autoload": true,
+        "settings": {
+            "max_transmissions_per_minute": 10,
+            "cooldown_seconds": 2,
+            "exempt_users": []
+        }
+    },
+    "hooks": [
+        "plugin.audio.transmit.start"
+    ],
+    "permissions": [
+        "websocket.send"
+    ],
+    "dependencies": []
+}
