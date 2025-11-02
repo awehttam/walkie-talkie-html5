@@ -26,6 +26,10 @@ A real-time voice communication Progressive Web App built with PHP.
   - **Multiple Formats**: Support for WAV files and raw PCM16 audio
   - **Example Audio**: Sample files included for testing (tones, notifications, welcome messages)
 - **Progressive Web App**: Installable, offline-capable, responsive design
+- **Plugin System**: Extend functionality with custom plugins (rate limiting, logging, custom features)
+  - Event-based architecture with hooks for server, connections, audio, channels
+  - Example plugins included (Hello World, Rate Limiter)
+  - Easy installation and configuration
 - **Embeddable**: Can be embedded in iframes or linked directly
 - **Cross-platform**: Works on desktop and mobile devices
 
@@ -302,6 +306,85 @@ CLI_DEFAULT_CHUNK_SIZE=4096
 - Add audio branding to your walkie talkie instance
 - Provide audible feedback for successful authentication
 
+## Plugin System
+
+Walkie-Talkie includes a powerful plugin system that allows you to extend functionality without modifying core code.
+
+### Features
+
+- **Event-based Architecture**: Hook into server lifecycle, connections, audio, channels, and more
+- **Easy Installation**: Drop plugin into directory, enable in config, restart server
+- **Example Plugins Included**: Hello World and Rate Limiter plugins demonstrate core concepts
+- **Configurable**: Each plugin has its own configuration via plugin.json or config.php
+- **Secure**: Review and test plugins before deployment
+
+### Quick Start
+
+Example plugins are included in `plugins/example-plugins/`:
+
+**Hello World Plugin**:
+```bash
+# Copy to plugins directory
+cp -r plugins/example-plugins/hello-world plugins/
+
+# Edit plugin.json and set "enabled": true
+nano plugins/hello-world/plugin.json
+
+# Restart server
+php server.php restart
+```
+
+**Rate Limiter Plugin** (prevents transmission spam):
+```bash
+# Copy and enable
+cp -r plugins/example-plugins/rate-limiter plugins/
+nano plugins/rate-limiter/plugin.json  # Set enabled: true
+php server.php restart
+```
+
+### Available Hooks
+
+Plugins can hook into various events:
+- **Server**: `plugin.server.init`, `plugin.server.shutdown`
+- **Connections**: `plugin.connection.open`, `plugin.connection.authenticate`, `plugin.connection.close`
+- **Channels**: `plugin.channel.join`, `plugin.channel.leave`
+- **Audio**: `plugin.audio.transmit.start`, `plugin.audio.transmit.end`, `plugin.audio.chunk`
+- **Messages**: `plugin.message.receive`, `plugin.message.send`
+- **Screen Names**: `plugin.screen_name.validate`, `plugin.screen_name.generate`
+
+### Creating Plugins
+
+See the [Plugin Development Guide](docs/PLUGINS.md) for detailed documentation on:
+- Plugin structure and manifest format
+- Available hooks and their parameters
+- Configuration options
+- Best practices and security considerations
+- API reference
+
+**Minimal plugin structure**:
+```
+my-plugin/
+├── plugin.json          # Plugin manifest with metadata
+├── MyPlugin.php         # Main class implementing PluginInterface
+├── config.php          # Optional configuration
+└── README.md           # Optional documentation
+```
+
+### Configuration
+
+```env
+# Disable plugins entirely
+PLUGINS_ENABLED=false
+
+# Custom plugins directory
+PLUGINS_PATH=custom-plugins/
+```
+
+For complete documentation, see:
+- [Plugin Development Guide](docs/PLUGINS.md) - Full API reference and development guide
+- [Plugin README](plugins/README.md) - Installation and usage instructions
+- [Example Plugins](plugins/example-plugins/) - Working examples with source code
+
 ## Architecture
 
 ### Backend Components
@@ -338,12 +421,23 @@ walkie-talkie/
 │       ├── AudioSender.php      # Audio transmission
 │       └── WelcomeManager.php   # Welcome message DB operations
 ├── src/
-│   └── WebSocketServer.php # WebSocket server implementation
+│   ├── WebSocketServer.php # WebSocket server implementation
+│   └── Plugins/           # Plugin system core
+│       ├── PluginInterface.php
+│       ├── AbstractPlugin.php
+│       └── PluginManager.php
+├── plugins/
+│   ├── README.md          # Plugin installation guide
+│   ├── example-plugins/   # Example plugins (in git)
+│   │   ├── hello-world/   # Simple demonstration plugin
+│   │   └── rate-limiter/  # Transmission rate limiting
+│   └── {your-plugin}/     # Custom plugins (gitignored)
 ├── data/
 │   └── walkie-talkie.db   # SQLite database (auto-created)
 ├── migrations/
 │   └── 003_add_welcome_messages.php # Welcome messages migration
 ├── docs/
+│   ├── PLUGINS.md         # Plugin development guide
 │   └── AUDIOMANAGER.md    # CLI tools implementation plan
 ├── server.php             # Server startup script
 ├── composer.json          # PHP dependencies
