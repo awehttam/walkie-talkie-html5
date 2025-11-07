@@ -553,9 +553,20 @@ class WalkieTalkie {
                 break;
 
             case 'error':
-                // Handle error messages from server (e.g., rate limiting)
+                // Handle error messages from server (e.g., rate limiting, transmission blocked)
                 console.error('Server error:', data.message);
-                this.showErrorNotification(data.message);
+
+                // Special handling for transmission blocked
+                if (data.code === 'transmission_blocked') {
+                    this.showErrorNotification(data.message, 'warning', 3000);
+
+                    // Stop any recording attempt that may have started
+                    if (this.isRecording) {
+                        this.stopTalking();
+                    }
+                } else {
+                    this.showErrorNotification(data.message);
+                }
                 break;
         }
     }

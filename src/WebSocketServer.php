@@ -39,12 +39,16 @@ class WebSocketServer implements MessageComponentInterface
     protected $channels;
     protected $db;
     protected $activeTransmissions; // Buffer for active transmissions
+    protected $activeTransmitters; // Track which connection is transmitting on each channel
     protected $trustedProxies = []; // List of trusted proxy IP addresses
     protected $pluginManager; // Plugin manager instance
 
     // Message history configuration
     protected $maxMessagesPerChannel = 10; // Maximum number of messages to keep per channel
     protected $maxMessageAge = 300; // Maximum message age in seconds (default: 5 minutes)
+
+    // PTT lockout configuration
+    protected $pttLockoutEnabled = true; // Whether to enforce one-speaker-at-a-time per channel
 
     // Authentication tracking
     protected $authenticatedUsers = []; // Map: resourceId => user data
@@ -59,6 +63,7 @@ class WebSocketServer implements MessageComponentInterface
         $this->clients = new SplObjectStorage;
         $this->channels = ['1' => new SplObjectStorage];
         $this->activeTransmissions = [];
+        $this->activeTransmitters = []; // Map: channelId => connectionResourceId
         $this->pluginManager = $pluginManager;
         $this->loadConfiguration();
         $this->initDatabase();
@@ -78,6 +83,10 @@ class WebSocketServer implements MessageComponentInterface
             $this->maxMessageAge = (int)$maxAge;
         }
 
+        // Load PTT lockout setting
+        $pttLockout = $_ENV['PTT_LOCKOUT_ENABLED'] ?? 'true';
+        $this->pttLockoutEnabled = ($pttLockout === 'true' || $pttLockout === '1');
+
         // Load trusted proxy IPs from environment variable
         $trustedProxiesEnv = $_ENV['TRUSTED_PROXIES'] ?? '';
         if (!empty($trustedProxiesEnv)) {
@@ -88,6 +97,7 @@ class WebSocketServer implements MessageComponentInterface
         }
 
         echo "Message history config: Max {$this->maxMessagesPerChannel} messages, Max age {$this->maxMessageAge} seconds\n";
+        echo "PTT lockout: " . ($this->pttLockoutEnabled ? 'enabled' : 'disabled') . "\n";
     }
 
     private function initDatabase()
@@ -433,6 +443,13 @@ class WebSocketServer implements MessageComponentInterface
             }
         }
 
+        // Clean up active transmitter locks for this connection
+        foreach ($this->activeTransmitters as $channel => $resourceId) {
+            if ($resourceId === $conn->resourceId) {
+                unset($this->activeTransmitters[$channel]);
+            }
+        }
+
         // Remove from authentication tracking
         if (isset($this->authenticatedUsers[$conn->resourceId])) {
             $username = $this->authenticatedUsers[$conn->resourceId]['username'];
@@ -640,6 +657,22 @@ class WebSocketServer implements MessageComponentInterface
         $identity = $this->getConnectionIdentity($conn);
         $clientIp = $this->getClientIp($conn);
 
+        // Check if someone else is already transmitting on this channel (if lockout enabled)
+        if ($this->pttLockoutEnabled && isset($this->activeTransmitters[$channel]) && $this->activeTransmitters[$channel] !== $conn->resourceId) {
+            $currentTransmitterIdentity = $this->getConnectionByResourceId($this->activeTransmitters[$channel]);
+            $currentTransmitterName = $currentTransmitterIdentity ? $currentTransmitterIdentity['screen_name'] : 'Another user';
+
+            $screenName = $identity ? $identity['screen_name'] : 'unknown';
+            echo "[TALK BLOCKED] Channel {$channel} - {$screenName} (Client {$conn->resourceId}) blocked - {$currentTransmitterName} is currently transmitting\n";
+
+            $conn->send(json_encode([
+                'type' => 'error',
+                'code' => 'transmission_blocked',
+                'message' => "Please wait - {$currentTransmitterName} is currently speaking"
+            ]));
+            return;
+        }
+
         // Execute plugin hook
         $allowTransmission = true;
         if ($this->pluginManager && $identity) {
@@ -648,6 +681,11 @@ class WebSocketServer implements MessageComponentInterface
 
         if (!$allowTransmission) {
             return; // Plugin blocked the transmission
+        }
+
+        // Mark this connection as the active transmitter for this channel (if lockout enabled)
+        if ($this->pttLockoutEnabled) {
+            $this->activeTransmitters[$channel] = $conn->resourceId;
         }
 
         $screenName = $identity ? $identity['screen_name'] : 'unknown';
@@ -668,6 +706,11 @@ class WebSocketServer implements MessageComponentInterface
     private function handlePushToTalkEnd(ConnectionInterface $conn, string $channel)
     {
         $identity = $this->getConnectionIdentity($conn);
+
+        // Clear the active transmitter for this channel
+        if (isset($this->activeTransmitters[$channel]) && $this->activeTransmitters[$channel] === $conn->resourceId) {
+            unset($this->activeTransmitters[$channel]);
+        }
 
         $message = [
             'type' => 'user_speaking',
@@ -1000,6 +1043,30 @@ class WebSocketServer implements MessageComponentInterface
     {
         $resourceId = $conn->resourceId;
 
+        // Check if authenticated user
+        if (isset($this->authenticatedUsers[$resourceId])) {
+            $user = $this->authenticatedUsers[$resourceId];
+            return [
+                'type' => 'authenticated',
+                'user_id' => $user['user_id'],
+                'screen_name' => $user['username']
+            ];
+        }
+
+        // Check if anonymous session
+        if (isset($this->anonymousSessions[$resourceId])) {
+            return [
+                'type' => 'anonymous',
+                'user_id' => null,
+                'screen_name' => $this->anonymousSessions[$resourceId]
+            ];
+        }
+
+        return null;
+    }
+
+    private function getConnectionByResourceId(int $resourceId): ?array
+    {
         // Check if authenticated user
         if (isset($this->authenticatedUsers[$resourceId])) {
             $user = $this->authenticatedUsers[$resourceId];
