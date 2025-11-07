@@ -596,12 +596,16 @@ class WebSocketServer implements MessageComponentInterface
 
         if (!isset($this->channels[$channel])) return;
 
+        // Determine codec for backward compatibility
+        $codec = $data['codec'] ?? $data['format'] ?? 'pcm16';
+
         foreach ($this->channels[$channel] as $client) {
             if ($client !== $sender) {
                 $message = [
                     'type' => 'audio_data',
                     'data' => $data['data'],
-                    'channel' => $channel
+                    'channel' => $channel,
+                    'codec' => $codec
                 ];
 
                 // Pass through format information
@@ -613,24 +617,42 @@ class WebSocketServer implements MessageComponentInterface
                     $message['mimeType'] = $data['mimeType'] ?? 'audio/webm';
                 }
 
+                // Pass through codec-specific metadata
+                if ($codec === 'opus' && isset($data['bitrate'])) {
+                    $message['bitrate'] = $data['bitrate'];
+                }
+
                 $client->send(json_encode($message));
             }
         }
 
         // Buffer audio chunks for complete transmission recording
-        if (isset($data['format']) && $data['format'] === 'pcm16') {
-            $transmissionKey = $sender->resourceId . '_' . $channel;
+        $transmissionKey = $sender->resourceId . '_' . $channel;
 
-            if (!isset($this->activeTransmissions[$transmissionKey])) {
-                $this->activeTransmissions[$transmissionKey] = [
-                    'clientId' => $data['clientId'] ?? 'unknown',
-                    'channel' => $channel,
-                    'sampleRate' => $data['sampleRate'] ?? 44100,
-                    'chunks' => [],
-                    'startTime' => microtime(true)
-                ];
-            }
+        if (!isset($this->activeTransmissions[$transmissionKey])) {
+            $this->activeTransmissions[$transmissionKey] = [
+                'clientId' => $data['clientId'] ?? 'unknown',
+                'channel' => $channel,
+                'codec' => $codec,
+                'sampleRate' => $data['sampleRate'] ?? 44100,
+                'bitrate' => $data['bitrate'] ?? null,
+                'chunks' => [],
+                'startTime' => microtime(true)
+            ];
+        }
 
+        // Handle codec-specific buffering
+        if ($codec === 'pcm16') {
+            // PCM16: Concatenate raw chunks
+            $this->activeTransmissions[$transmissionKey]['chunks'][] = $data['data'];
+        } elseif ($codec === 'opus') {
+            // Opus: Store frames with metadata (frames are independent)
+            $this->activeTransmissions[$transmissionKey]['chunks'][] = [
+                'data' => $data['data'],
+                'timestamp' => microtime(true)
+            ];
+        } else {
+            // Unknown codec: store as-is
             $this->activeTransmissions[$transmissionKey]['chunks'][] = $data['data'];
         }
     }
@@ -685,29 +707,49 @@ class WebSocketServer implements MessageComponentInterface
 
         if (isset($this->activeTransmissions[$transmissionKey])) {
             $transmission = $this->activeTransmissions[$transmissionKey];
+            $codec = $transmission['codec'] ?? 'pcm16';
 
-            // Decode each Base64 chunk, concatenate raw binary, then re-encode
-            $binaryData = '';
-            foreach ($transmission['chunks'] as $chunk) {
-                $binaryData .= base64_decode($chunk);
+            // Handle codec-specific concatenation
+            if ($codec === 'opus') {
+                // Opus: Frames are already complete, just concatenate
+                $completeAudio = '';
+                foreach ($transmission['chunks'] as $frame) {
+                    $frameData = is_array($frame) ? $frame['data'] : $frame;
+                    $completeAudio .= base64_decode($frameData);
+                }
+                $completeAudio = base64_encode($completeAudio);
+
+                // Opus duration estimation (approximate based on frame count)
+                // Each Opus frame is typically 20ms
+                $frameCount = count($transmission['chunks']);
+                $frameDurationMs = 20; // Default frame duration
+                $duration = $frameCount * $frameDurationMs;
+            } else {
+                // PCM16: Decode each Base64 chunk, concatenate raw binary, then re-encode
+                $binaryData = '';
+                foreach ($transmission['chunks'] as $chunk) {
+                    $binaryData .= base64_decode($chunk);
+                }
+
+                // Re-encode the complete binary data as Base64
+                $completeAudio = base64_encode($binaryData);
+
+                // Calculate total duration for PCM16
+                $audioDataLength = strlen($binaryData);
+                $duration = round(($audioDataLength / 2) / $transmission['sampleRate'] * 1000);
             }
-
-            // Re-encode the complete binary data as Base64
-            $completeAudio = base64_encode($binaryData);
-
-            // Calculate total duration
-            $audioDataLength = strlen($binaryData);
-            $duration = round(($audioDataLength / 2) / $transmission['sampleRate'] * 1000);
 
             $clientIp = $this->getClientIp($conn);
             $clientId = $transmission['clientId'];
             $screenName = $identity ? $identity['screen_name'] : 'unknown';
-            echo "[TALK END] Channel {$channel} - {$screenName} (Client ID: {$clientId}, Connection: {$conn->resourceId}, IP: {$clientIp}), Duration: {$duration}ms\n";
+            echo "[TALK END] Channel {$channel} - {$screenName} (Client ID: {$clientId}, Connection: {$conn->resourceId}, IP: {$clientIp}), Codec: {$codec}, Duration: {$duration}ms\n";
 
             // Prepare audio data for plugins
             $audioData = [
                 'data' => $completeAudio,
+                'codec' => $codec,
                 'sample_rate' => $transmission['sampleRate'],
+                'bitrate' => $transmission['bitrate'],
                 'duration' => $duration
             ];
 
@@ -723,7 +765,9 @@ class WebSocketServer implements MessageComponentInterface
                 $transmission['clientId'],
                 $completeAudio,
                 $transmission['sampleRate'],
-                $duration
+                $duration,
+                $codec,
+                $transmission['bitrate']
             );
 
             // Clean up transmission buffer
@@ -731,7 +775,7 @@ class WebSocketServer implements MessageComponentInterface
         }
     }
 
-    private function saveMessage(ConnectionInterface $conn, string $channel, string $clientId, string $audioData, int $sampleRate, int $duration)
+    private function saveMessage(ConnectionInterface $conn, string $channel, string $clientId, string $audioData, int $sampleRate, int $duration, string $codec = 'pcm16', ?int $bitrate = null)
     {
         if (!$this->db) {
             return; // Database not available
@@ -747,8 +791,8 @@ class WebSocketServer implements MessageComponentInterface
 
             // Insert new message
             $stmt = $this->db->prepare('
-                INSERT INTO message_history (channel, client_id, user_id, screen_name, audio_data, sample_rate, duration, timestamp)
-                VALUES (:channel, :client_id, :user_id, :screen_name, :audio_data, :sample_rate, :duration, :timestamp)
+                INSERT INTO message_history (channel, client_id, user_id, screen_name, audio_data, sample_rate, duration, timestamp, codec, bitrate)
+                VALUES (:channel, :client_id, :user_id, :screen_name, :audio_data, :sample_rate, :duration, :timestamp, :codec, :bitrate)
             ');
 
             $stmt->execute([
@@ -759,7 +803,9 @@ class WebSocketServer implements MessageComponentInterface
                 ':audio_data' => $audioData,
                 ':sample_rate' => $sampleRate,
                 ':duration' => $duration,
-                ':timestamp' => $timestamp
+                ':timestamp' => $timestamp,
+                ':codec' => $codec,
+                ':bitrate' => $bitrate
             ]);
 
             // Clean up old messages based on count and age
@@ -815,7 +861,7 @@ class WebSocketServer implements MessageComponentInterface
             $cutoffTimestamp = round((microtime(true) - $this->maxMessageAge) * 1000);
 
             $stmt = $this->db->prepare('
-                SELECT client_id, screen_name, audio_data, sample_rate, duration, timestamp
+                SELECT client_id, screen_name, audio_data, sample_rate, duration, timestamp, codec, bitrate
                 FROM message_history
                 WHERE channel = :channel
                 AND timestamp >= :cutoff_timestamp
@@ -938,7 +984,8 @@ class WebSocketServer implements MessageComponentInterface
 
         // Check if already authenticated
         if (isset($this->authenticatedUsers[$conn->resourceId])) {
-            $conn->send(json_encode(['type' => 'error', 'message' => 'Already authenticated']));
+            $conn->s
+            end(json_encode(['type' => 'error', 'message' => 'Already authenticated']));
             return;
         }
 
