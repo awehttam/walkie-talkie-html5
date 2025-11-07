@@ -82,10 +82,13 @@ try {
         throw new Exception('Challenge mismatch');
     }
 
-    // Verify origin
-    $expectedOrigin = $_ENV['WEBAUTHN_ORIGIN'] ?? 'http://localhost:3000';
-    if (!isset($clientData['origin']) || $clientData['origin'] !== $expectedOrigin) {
-        throw new Exception('Origin mismatch. Expected: ' . $expectedOrigin . ', Got: ' . ($clientData['origin'] ?? 'none'));
+    // Verify origin - support multiple origins from comma-delimited list
+    $originsConfig = $_ENV['WEBAUTHN_ORIGINS'] ?? $_ENV['WEBAUTHN_ORIGIN'] ?? 'http://localhost:3000';
+    $allowedOrigins = array_map('trim', explode(',', $originsConfig));
+    $clientOrigin = $clientData['origin'] ?? null;
+
+    if (!$clientOrigin || !in_array($clientOrigin, $allowedOrigins, true)) {
+        throw new Exception('Origin mismatch. Expected one of: ' . implode(', ', $allowedOrigins) . ', Got: ' . ($clientOrigin ?? 'none'));
     }
 
     // Verify type

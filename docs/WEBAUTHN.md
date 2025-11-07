@@ -95,7 +95,7 @@ Add to `.env`:
 # WebAuthn/Passkeys Configuration
 WEBAUTHN_RP_NAME="Walkie Talkie"           # Relying Party name shown to users
 WEBAUTHN_RP_ID=localhost                   # Must match domain (no port, no protocol)
-WEBAUTHN_ORIGIN=http://localhost:3000      # Full origin URL with protocol
+WEBAUTHN_ORIGINS=http://localhost:3000     # Comma-delimited list of allowed origins
 WEBAUTHN_TIMEOUT=60000                     # Challenge timeout in milliseconds
 
 # JWT Configuration
@@ -115,9 +115,11 @@ SCREEN_NAME_PATTERN=^[a-zA-Z0-9_-]+$      # Alphanumeric, underscore, hyphen
 
 **Configuration notes:**
 - `WEBAUTHN_RP_ID`: Must match your domain. For localhost development, use "localhost". For production at "example.com", use "example.com".
-- `WEBAUTHN_ORIGIN`: Must match exactly where users access the app, including protocol and port.
+- `WEBAUTHN_ORIGINS`: Comma-delimited list of allowed origins. Must match exactly where users access the app, including protocol and port.
+  - Single origin: `WEBAUTHN_ORIGINS=https://yourdomain.com`
+  - Multiple origins: `WEBAUTHN_ORIGINS=https://yourdomain.com,https://app.yourdomain.com,https://mobile.yourdomain.com`
 - `JWT_SECRET`: Generate securely. Never commit to version control.
-- Production: Set `WEBAUTHN_ORIGIN` to `https://yourdomain.com` (HTTPS required)
+- Production: Set `WEBAUTHN_ORIGINS` to your HTTPS URL(s) (HTTPS required)
 
 ### 1.3 Migration Script
 
@@ -1728,7 +1730,7 @@ Add to your `.env` file:
 # WebAuthn Configuration
 WEBAUTHN_RP_NAME="Walkie Talkie"
 WEBAUTHN_RP_ID=localhost                   # Change to your domain in production
-WEBAUTHN_ORIGIN=http://localhost:3000      # Change to your URL in production
+WEBAUTHN_ORIGINS=http://localhost:3000     # Comma-delimited list of allowed origins
 
 # JWT Configuration
 JWT_SECRET=<generate-with-openssl>         # openssl rand -base64 64
@@ -2136,7 +2138,7 @@ try {
 ### Production Checklist
 - [ ] Generate strong JWT secret (openssl rand -base64 64)
 - [ ] Set `WEBAUTHN_RP_ID` to production domain
-- [ ] Set `WEBAUTHN_ORIGIN` to production HTTPS URL
+- [ ] Set `WEBAUTHN_ORIGINS` to production HTTPS URL(s) (comma-delimited for multiple origins)
 - [ ] Enable HTTPS (required for WebAuthn)
 - [ ] Set secure cookie flags (Secure, HttpOnly, SameSite)
 - [ ] Configure trusted proxies if behind load balancer
