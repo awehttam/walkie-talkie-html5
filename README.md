@@ -479,7 +479,7 @@ This application now supports **WebAuthn/passkeys** for passwordless authenticat
    # WebAuthn Configuration
    WEBAUTHN_RP_NAME="Walkie Talkie"
    WEBAUTHN_RP_ID=localhost                    # Change to your domain in production
-   WEBAUTHN_ORIGIN=http://localhost:3000       # Change to your URL in production
+   WEBAUTHN_ORIGINS=http://localhost:3000      # Comma-delimited list of allowed origins
 
    # JWT Configuration
    JWT_SECRET=<your-generated-secret-here>
@@ -540,9 +540,9 @@ SCREEN_NAME_PATTERN=^[a-zA-Z0-9_-]+$
 - **RP ID**: Must match your domain exactly (no port, no protocol)
   - For `example.com` → use `WEBAUTHN_RP_ID=example.com`
   - For `sub.example.com` → use `WEBAUTHN_RP_ID=sub.example.com`
-- **Origin**: Must include protocol and port
-  - For `https://example.com` → use `WEBAUTHN_ORIGIN=https://example.com`
-  - For `https://example.com:8443` → use `WEBAUTHN_ORIGIN=https://example.com:8443`
+- **Origins**: Must include protocol and port (comma-delimited list for multiple origins)
+  - For single origin: `WEBAUTHN_ORIGINS=https://example.com`
+  - For multiple origins: `WEBAUTHN_ORIGINS=https://example.com,https://example.com:8443,https://app.example.com`
 
 For detailed implementation guide, see [docs/WEBAUTHN.md](docs/WEBAUTHN.md)
 
