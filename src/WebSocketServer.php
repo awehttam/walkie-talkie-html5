@@ -408,6 +408,11 @@ class WebSocketServer implements MessageComponentInterface
             case 'reload_welcome_messages':
                 $this->reloadWelcomeMessages($from);
                 break;
+
+            default;
+                echo "Unknown message type ".$data['type']."\n";
+                print_r($data);
+                break;
         }
     }
 
