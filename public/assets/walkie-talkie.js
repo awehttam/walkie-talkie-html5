@@ -838,19 +838,31 @@ class WalkieTalkie {
             await this.audioContext.resume();
         }
 
+        // Buffer for collecting Opus chunks
+        this.opusChunks = [];
+
         // Create MediaRecorder with Opus codec
         this.opusMediaRecorder = this.opusCodec.createStreamEncoder(
             this.audioStream,
             (encodedData) => {
                 if (!this.isRecording) return;
 
+                // Store chunk for later
+                this.opusChunks.push(encodedData.data);
+
                 // Send Opus encoded data
                 this.sendOpusAudio(encodedData.data);
             }
         );
 
-        // Start recording with 100ms chunks for low latency
-        this.opusMediaRecorder.start(100);
+        // Handle when recording stops - send complete file
+        this.opusMediaRecorder.onstop = () => {
+            console.log('Opus recording stopped, total chunks:', this.opusChunks.length);
+        };
+
+        // Start recording - don't specify timeslice to get complete file
+        // This will buffer until stop() is called
+        this.opusMediaRecorder.start();
     }
 
     sendOpusAudio(base64Data) {
@@ -1205,14 +1217,6 @@ class WalkieTalkie {
         try {
             if (!base64Data || base64Data.length === 0) return;
 
-            if (!this.audioContext) {
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-
-            if (this.audioContext.state === 'suspended') {
-                await this.audioContext.resume();
-            }
-
             // Strip data URL prefix if present (safety check)
             if (base64Data.startsWith('data:')) {
                 const commaIndex = base64Data.indexOf(',');
@@ -1222,11 +1226,70 @@ class WalkieTalkie {
                 }
             }
 
-            // Use Opus decoder if available
+            // Convert base64 to blob
+            const binaryString = atob(base64Data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            // Create blob with Opus MIME type
+            const blob = new Blob([bytes], { type: 'audio/ogg;codecs=opus' });
+            const url = URL.createObjectURL(blob);
+
+            console.log('Playing Opus audio via Audio element, size:', bytes.length);
+
+            // Use HTML Audio element for better Opus support
+            const audio = new Audio(url);
+
+            // Set volume
+            const volume = this.volumeControl ? this.volumeControl.value / 100 : 0.5;
+            audio.volume = volume;
+
+            // Play the audio
+            const playPromise = audio.play();
+
+            if (playPromise !== undefined) {
+                playPromise
+                    .then(() => {
+                        console.log('Opus audio playing successfully');
+                    })
+                    .catch(error => {
+                        console.error('Opus audio play error:', error);
+
+                        // Fallback: Try with Web Audio API
+                        this.playOpusViaWebAudio(base64Data, sampleRate);
+                    });
+            }
+
+            // Clean up blob URL after playback
+            audio.onended = () => {
+                URL.revokeObjectURL(url);
+                console.log('Opus playback ended');
+            };
+
+            // Store reference
+            this.currentAudioSource = audio;
+
+        } catch (error) {
+            console.error('Error playing Opus audio:', error);
+        }
+    }
+
+    async playOpusViaWebAudio(base64Data, sampleRate) {
+        // Fallback method using Web Audio API
+        try {
+            if (!this.audioContext) {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+            }
+
             if (this.opusCodec && this.codecSupport.opus) {
                 const audioBuffer = await this.opusCodec.decode(base64Data, this.audioContext);
 
-                // Play the decoded audio
                 const source = this.audioContext.createBufferSource();
                 source.buffer = audioBuffer;
 
@@ -1238,7 +1301,6 @@ class WalkieTalkie {
                 gainNode.connect(this.audioContext.destination);
                 source.start();
 
-                // Store the source so we can stop it later
                 this.currentAudioSource = source;
 
                 source.onended = () => {
@@ -1247,12 +1309,10 @@ class WalkieTalkie {
                     }
                 };
 
-                console.log('Playing Opus audio');
-            } else {
-                console.warn('Opus codec not available, cannot play Opus audio');
+                console.log('Playing Opus via Web Audio API fallback');
             }
         } catch (error) {
-            console.error('Error playing Opus audio:', error);
+            console.error('Web Audio API fallback also failed:', error);
         }
     }
 

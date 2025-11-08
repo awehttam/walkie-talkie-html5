@@ -167,10 +167,16 @@ class OpusCodec {
             // Create a copy of the buffer to prevent detachment
             arrayBuffer = bytes.buffer.slice(0);
 
+            const first16 = new Uint8Array(arrayBuffer.slice(0, 16));
+            const firstBytesHex = Array.from(first16).map(b => b.toString(16).padStart(2, '0')).join(' ');
+            const firstBytesAscii = Array.from(first16).map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
+
             console.log('Decoding Opus data:', {
                 base64Length: opusData.length,
                 arrayBufferSize: arrayBuffer.byteLength,
-                firstBytes: new Uint8Array(arrayBuffer.slice(0, 4))
+                firstBytes: first16,
+                firstBytesHex: firstBytesHex,
+                firstBytesAscii: firstBytesAscii
             });
         } else if (opusData instanceof Uint8Array) {
             arrayBuffer = opusData.buffer.slice(0);
