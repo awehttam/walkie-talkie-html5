@@ -855,6 +855,11 @@ class WalkieTalkie {
 
     sendOpusAudio(base64Data) {
         try {
+            console.log('Sending Opus audio chunk:', {
+                dataLength: base64Data.length,
+                samplePreview: base64Data.substring(0, 20)
+            });
+
             const audioMessage = {
                 type: 'audio_data',
                 channel: this.channel,
