@@ -606,7 +606,7 @@ class WalkieTalkie {
                 const codec = data.codec || data.format || 'pcm16';
 
                 if (codec === 'opus') {
-                    this.playOpusAudio(data.data, data.sampleRate || 48000);
+                    this.playOpusAudio(data.data, data.sampleRate || 48000, data.mimeType);
                 } else if (codec === 'pcm16' || data.format === 'pcm16') {
                     this.playPCMAudio(data.data, data.sampleRate || 44100, data.channels || 1);
                 } else if (data.format === 'encoded') {
@@ -838,37 +838,60 @@ class WalkieTalkie {
             await this.audioContext.resume();
         }
 
-        // Buffer for collecting Opus chunks
-        this.opusChunks = [];
+        // Buffer for collecting Opus data blobs
+        this.opusBlobs = [];
+        this.opusMimeType = null;
 
         // Create MediaRecorder with Opus codec
         this.opusMediaRecorder = this.opusCodec.createStreamEncoder(
             this.audioStream,
             (encodedData) => {
-                if (!this.isRecording) return;
-
-                // Store chunk for later
-                this.opusChunks.push(encodedData.data);
-
-                // Send Opus encoded data
-                this.sendOpusAudio(encodedData.data);
+                // Don't send individual chunks - just collect them
+                // We'll send the complete file when recording stops
             }
         );
 
-        // Handle when recording stops - send complete file
-        this.opusMediaRecorder.onstop = () => {
-            console.log('Opus recording stopped, total chunks:', this.opusChunks.length);
+        // Collect data into blobs
+        this.opusMediaRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+                this.opusBlobs.push(event.data);
+                this.opusMimeType = event.data.type || 'audio/webm;codecs=opus';
+                console.log('Collected Opus blob, size:', event.data.size, 'type:', event.data.type);
+            }
         };
 
-        // Start recording - don't specify timeslice to get complete file
-        // This will buffer until stop() is called
+        // Handle when recording stops - send complete file
+        this.opusMediaRecorder.onstop = () => {
+            console.log('Opus recording stopped, blobs collected:', this.opusBlobs.length);
+
+            if (this.opusBlobs.length > 0) {
+                // Combine all blobs into one
+                const completeBlob = new Blob(this.opusBlobs, { type: this.opusMimeType });
+                console.log('Complete Opus recording size:', completeBlob.size, 'bytes');
+
+                // Convert to base64 and send
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64data = reader.result.split(',')[1];
+                    this.sendOpusAudio(base64data, this.opusMimeType);
+                };
+                reader.readAsDataURL(completeBlob);
+
+                // Clear for next recording
+                this.opusBlobs = [];
+            }
+        };
+
+        // Start recording - no timeslice, will buffer until stop()
         this.opusMediaRecorder.start();
+        console.log('Opus MediaRecorder started');
     }
 
-    sendOpusAudio(base64Data) {
+    sendOpusAudio(base64Data, mimeType) {
         try {
             console.log('Sending Opus audio chunk:', {
                 dataLength: base64Data.length,
+                mimeType: mimeType,
                 samplePreview: base64Data.substring(0, 20)
             });
 
@@ -878,6 +901,7 @@ class WalkieTalkie {
                 data: base64Data,
                 codec: 'opus',
                 format: 'opus',
+                mimeType: mimeType || 'audio/webm;codecs=opus',
                 sampleRate: 48000,
                 channels: 1,
                 bitrate: 24000,
@@ -1213,7 +1237,7 @@ class WalkieTalkie {
         }
     }
 
-    async playOpusAudio(base64Data, sampleRate) {
+    async playOpusAudio(base64Data, sampleRate, providedMimeType) {
         try {
             if (!base64Data || base64Data.length === 0) return;
 
@@ -1233,11 +1257,30 @@ class WalkieTalkie {
                 bytes[i] = binaryString.charCodeAt(i);
             }
 
-            // Create blob with Opus MIME type
-            const blob = new Blob([bytes], { type: 'audio/ogg;codecs=opus' });
+            // Use provided MIME type if available, otherwise detect
+            let mimeType = providedMimeType;
+
+            if (!mimeType && bytes.length >= 4) {
+                const header = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+                if (header === 'OggS') {
+                    mimeType = 'audio/ogg;codecs=opus';
+                } else if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
+                    // WebM/Matroska magic number
+                    mimeType = 'audio/webm;codecs=opus';
+                } else {
+                    console.warn('Unknown audio format, first bytes:', bytes[0].toString(16), bytes[1].toString(16), bytes[2].toString(16), bytes[3].toString(16));
+                    // Default fallback
+                    mimeType = 'audio/webm;codecs=opus';
+                }
+            } else if (!mimeType) {
+                mimeType = 'audio/webm;codecs=opus';
+            }
+
+            // Create blob with MIME type
+            const blob = new Blob([bytes], { type: mimeType });
             const url = URL.createObjectURL(blob);
 
-            console.log('Playing Opus audio via Audio element, size:', bytes.length);
+            console.log('Playing Opus audio via Audio element, size:', bytes.length, 'MIME type:', mimeType);
 
             // Use HTML Audio element for better Opus support
             const audio = new Audio(url);

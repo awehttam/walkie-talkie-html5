@@ -92,6 +92,8 @@ class OpusCodec {
         const mimeType = this.supportedMimeType;
         const bitrate = this.encoderConfig?.bitrate || 24000;
 
+        console.log('Creating MediaRecorder with MIME type:', mimeType, 'bitrate:', bitrate);
+
         // Create MediaRecorder with Opus codec
         const mediaRecorder = new MediaRecorder(stream, {
             mimeType: mimeType,
@@ -105,6 +107,12 @@ class OpusCodec {
             if (event.data && event.data.size > 0) {
                 encodedChunks.push(event.data);
 
+                console.log('MediaRecorder data available:', {
+                    size: event.data.size,
+                    type: event.data.type,
+                    actualMimeType: mediaRecorder.mimeType
+                });
+
                 // Convert to Base64 for transmission
                 const reader = new FileReader();
                 reader.onloadend = () => {
@@ -112,7 +120,7 @@ class OpusCodec {
                     if (onDataCallback) {
                         onDataCallback({
                             data: base64data,
-                            mimeType: mimeType,
+                            mimeType: mediaRecorder.mimeType || mimeType,
                             timestamp: Date.now()
                         });
                     }
