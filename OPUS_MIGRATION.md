@@ -1313,6 +1313,141 @@ If critical issues arise:
 
 ---
 
+## Real-Time Streaming Limitations (CRITICAL)
+
+### Problem Discovered During Implementation
+
+**The Opus codec implementation via MediaRecorder API has a fundamental limitation that prevents real-time streaming** as required by the walkie-talkie PTT (Push-to-Talk) interface.
+
+#### Root Cause: WebM Container Format
+
+1. **Browser Support**: Most browsers (Chrome, Edge) only support Opus via `audio/webm;codecs=opus`, NOT `audio/ogg;codecs=opus`
+
+2. **Container Structure**: WebM requires a complete file structure:
+   - **Initialization segment** (EBML header, tracks, codec info) - only in first chunk
+   - **Media segments** (actual audio data) - in subsequent chunks
+   - Subsequent chunks reference but don't include the initialization segment
+
+3. **Chunk Independence**: Each 100ms MediaRecorder chunk is a partial WebM file that cannot be decoded independently:
+   ```
+   Chunk 1: [EBML Header + Track Info + Audio Data]  ✓ Can decode
+   Chunk 2: [Audio Data only]                        ✗ Cannot decode (missing init)
+   Chunk 3: [Audio Data only]                        ✗ Cannot decode (missing init)
+   ```
+
+4. **Error Observed**:
+   ```javascript
+   NotSupportedError: Failed to load because no supported source was found.
+   ```
+   Browser's HTML5 Audio and Web Audio `decodeAudioData()` both reject individual WebM chunks.
+
+#### Why OGG Would Work (But Isn't Available)
+
+OGG/Opus container format **is designed for streaming**:
+- Each chunk is a complete, self-contained OGG page
+- No dependencies between chunks
+- Can decode and play chunks independently
+
+However, **Chrome/Edge don't support `audio/ogg;codecs=opus` in MediaRecorder**.
+
+#### Attempted Solutions (All Failed)
+
+1. ✗ **Web Audio `decodeAudioData()`**: Rejects incomplete WebM chunks
+2. ✗ **HTML5 Audio element**: Cannot play partial WebM files
+3. ✗ **Sequential queue playback**: Still fails - chunks remain invalid
+4. ✗ **Buffering complete transmission**: Works but defeats real-time requirement (user rejected)
+5. ✗ **Prioritizing OGG detection**: Browser doesn't support it
+
+#### Current Status
+
+**Opus via MediaRecorder is NOT suitable for real-time PTT streaming** in the current browser environment.
+
+### Alternative Approaches
+
+#### Option 1: Hybrid Codec Strategy ⭐ RECOMMENDED
+Keep PCM16 for real-time PTT, use Opus for storage/history:
+- **Live transmission**: PCM16 (low latency, proven working)
+- **Message history**: Server transcodes PCM16 → Opus for storage
+- **Playback from history**: Opus (complete files, no streaming needed)
+- **Welcome messages**: Pre-recorded as Opus
+
+**Pros**:
+- No change to real-time UX
+- Still achieve storage savings (98% reduction in DB size)
+- Works within browser limitations
+
+**Cons**:
+- No bandwidth savings on live transmission
+- Server CPU cost for transcoding
+
+#### Option 2: MediaSource Extensions (MSE)
+Use MSE API for true streaming support:
+```javascript
+const mediaSource = new MediaSource();
+const sourceBuffer = mediaSource.addSourceBuffer('audio/webm; codecs="opus"');
+// Append initialization segment once
+sourceBuffer.appendBuffer(initSegment);
+// Append media segments as they arrive
+sourceBuffer.appendBuffer(mediaSegment);
+```
+
+**Pros**:
+- Designed for streaming media chunks
+- Can handle WebM chunk dependencies
+- Industry standard (used by YouTube, Netflix)
+
+**Cons**:
+- Significantly more complex implementation
+- Requires managing buffer state machine
+- Higher latency (buffering required)
+- May still not meet <150ms PTT requirement
+
+#### Option 3: WebRTC Data Channel + Opus
+Use WebRTC's built-in Opus support:
+- Peer-to-peer audio streaming
+- Native Opus codec in WebRTC
+- Designed for real-time communication
+
+**Pros**:
+- Built for real-time audio
+- Native Opus support
+- Low latency
+
+**Cons**:
+- Complete architecture change (P2P vs client-server)
+- More complex server (signaling + TURN/STUN)
+- May not fit current channel-based model
+
+#### Option 4: Raw Opus Encoding (WASM)
+Use a WASM Opus encoder to generate raw Opus packets:
+- Libraries: `libopus.js`, `opus-recorder`
+- Encode to raw Opus frames (not containers)
+- Custom packet protocol
+
+**Pros**:
+- Full control over encoding/decoding
+- Can create streamable format
+- No container overhead
+
+**Cons**:
+- Large WASM library (~200-500KB)
+- More complex implementation
+- Need custom packet framing
+- Browser decode still requires container or custom decoder
+
+### Recommendation
+
+**For immediate deployment**: Use **Option 1 (Hybrid Strategy)**
+- Keeps working real-time PTT with PCM16
+- Achieves storage/history compression with Opus
+- Minimal code changes to current working implementation
+
+**For future enhancement**: Explore **Option 2 (MSE)** if real-time Opus transmission becomes critical
+- Test if MSE can meet <150ms latency requirement
+- Implement as experimental feature with PCM16 fallback
+
+---
+
 ## Open Questions
 
 1. **Should we transcode Opus → PCM16 on server for legacy clients?**

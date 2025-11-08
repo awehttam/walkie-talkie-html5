@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opus Header Prepending Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        h1 {
+            color: #4CAF50;
+        }
+        h2 {
+            color: #81c784;
+            margin-top: 30px;
+        }
+        .test-section {
+            background: #2a2a2a;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border: 1px solid #444;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background: #1b5e20;
+            color: #a5d6a7;
+            border: 1px solid #4caf50;
+        }
+        .error {
+            background: #b71c1c;
+            color: #ef9a9a;
+            border: 1px solid #f44336;
+        }
+        .info {
+            background: #01579b;
+            color: #81d4fa;
+            border: 1px solid #2196f3;
+        }
+        .warning {
+            background: #e65100;
+            color: #ffcc80;
+            border: 1px solid #ff9800;
+        }
+        button {
+            padding: 12px 24px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: #45a049;
+        }
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        .btn-info {
+            background: #2196F3;
+            color: white;
+        }
+        #log {
+            background: #1a1a1a;
+            color: #0f0;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #333;
+        }
+        .log-entry {
+            margin: 3px 0;
+            padding: 2px 0;
+        }
+        .log-timestamp {
+            color: #888;
+            margin-right: 10px;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .metric {
+            background: #333;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+        }
+        .metric-label {
+            color: #999;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        .metric-value {
+            color: #4CAF50;
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        .hex-dump {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .comparison-table th,
+        .comparison-table td {
+            padding: 10px;
+            border: 1px solid #444;
+            text-align: left;
+        }
+        .comparison-table th {
+            background: #333;
+            color: #4CAF50;
+        }
+        .comparison-table tr:nth-child(even) {
+            background: #252525;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎙️ Opus Header Prepending Test</h1>
+
+    <div class="test-section">
+        <h2>Test Objective</h2>
+        <p>Test if prepending the WebM initialization segment to each Opus chunk makes them independently decodable.</p>
+        <p><strong>Approach:</strong></p>
+        <ol>
+            <li>Record audio with MediaRecorder (WebM/Opus, 100ms chunks)</li>
+            <li>Extract initialization segment from first chunk</li>
+            <li>Prepend init segment to chunks 2, 3, 4...</li>
+            <li>Test if prepended chunks can decode independently</li>
+        </ol>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 1: Record Audio</h2>
+        <button id="start-recording" class="btn-primary">Start Recording (Speak for 3 seconds)</button>
+        <button id="stop-recording" class="btn-danger" disabled>Stop Recording</button>
+        <div id="recording-status" style="margin-top: 10px;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 2: Analyze WebM Structure</h2>
+        <button id="analyze-structure" class="btn-info" disabled>Analyze First Chunk Structure</button>
+        <div id="structure-analysis" style="margin-top: 10px;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 3: Test Without Header Prepending (Baseline)</h2>
+        <button id="test-baseline" class="btn-info" disabled>Test Chunks Without Prepending</button>
+        <div id="baseline-results" style="margin-top: 10px;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 4: Test With Header Prepending</h2>
+        <button id="test-prepending" class="btn-primary" disabled>Test Chunks With Prepended Headers</button>
+        <div id="prepending-results" style="margin-top: 10px;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Comparison Results</h2>
+        <div id="comparison-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Metrics</h2>
+        <div class="metrics" id="metrics"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Detailed Log</h2>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        // Test state
+        let mediaRecorder = null;
+        let audioStream = null;
+        let audioContext = null;
+        let chunks = [];
+        let startTime = null;
+        let initSegment = null;
+
+        // DOM elements
+        const logDiv = document.getElementById('log');
+        const metricsDiv = document.getElementById('metrics');
+
+        // Logging
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                fractionalSecondDigits: 3
+            });
+
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span>${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        function showStatus(element, message, type = 'info') {
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function updateMetric(label, value, unit = '') {
+            let metric = document.querySelector(`[data-metric="${label}"]`);
+            if (!metric) {
+                metric = document.createElement('div');
+                metric.className = 'metric';
+                metric.dataset.metric = label;
+                metric.innerHTML = `
+                    <div class="metric-label">${label}</div>
+                    <div class="metric-value"><span class="value">${value}</span><span class="unit">${unit}</span></div>
+                `;
+                metricsDiv.appendChild(metric);
+            } else {
+                metric.querySelector('.value').textContent = value;
+                metric.querySelector('.unit').textContent = unit;
+            }
+        }
+
+        // WebM EBML Parser
+        class WebMParser {
+            constructor(buffer) {
+                this.buffer = buffer;
+                this.view = new DataView(buffer);
+                this.offset = 0;
+            }
+
+            readVInt(readRaw = false) {
+                // Read EBML variable-length integer
+                const startOffset = this.offset;
+                let byte = this.view.getUint8(this.offset);
+                let mask = 0x80;
+                let length = 0;
+
+                while (length < 8 && !(byte & mask)) {
+                    mask >>= 1;
+                    length++;
+                }
+
+                if (length > 8) {
+                    throw new Error('Invalid VInt at offset ' + startOffset);
+                }
+
+                let value = readRaw ? byte : (byte & (mask - 1));
+                this.offset++;
+
+                for (let i = 1; i <= length; i++) {
+                    value = (value << 8) | this.view.getUint8(this.offset++);
+                }
+
+                return value;
+            }
+
+            readElementId() {
+                // Element IDs can be 1-4 bytes
+                const startOffset = this.offset;
+                let byte = this.view.getUint8(this.offset);
+                let mask = 0x80;
+                let length = 1;
+
+                // Determine length based on first byte
+                while (length < 4 && !(byte & mask)) {
+                    mask >>= 1;
+                    length++;
+                }
+
+                let id = byte;
+                this.offset++;
+
+                for (let i = 1; i < length; i++) {
+                    id = (id << 8) | this.view.getUint8(this.offset++);
+                }
+
+                return id;
+            }
+
+            readElement() {
+                if (this.offset >= this.buffer.byteLength) {
+                    return null;
+                }
+
+                const startOffset = this.offset;
+                const id = this.readElementId();
+                const size = this.readVInt();
+                const dataOffset = this.offset;
+
+                // Check for unknown size (all 1's)
+                const isUnknownSize = size === 0xFFFFFFFFFFFFFF || size > this.buffer.byteLength;
+
+                return {
+                    id,
+                    size: isUnknownSize ? -1 : size,
+                    startOffset,
+                    dataOffset,
+                    dataEnd: isUnknownSize ? -1 : (dataOffset + size),
+                    isUnknownSize
+                };
+            }
+
+            findClusterStart() {
+                // Cluster ID in WebM is 0x1F43B675
+                this.offset = 0;
+                const elementStack = [];
+
+                log('Parsing WebM structure...');
+
+                while (this.offset < this.buffer.byteLength) {
+                    const startOffset = this.offset;
+
+                    try {
+                        const element = this.readElement();
+
+                        if (!element) break;
+
+                        const name = this.getElementName(element.id);
+                        const sizeStr = element.isUnknownSize ? 'unknown' : element.size;
+
+                        log(`  Offset ${startOffset.toString(16)}: ${name} (0x${element.id.toString(16)}) size=${sizeStr}`);
+
+                        // Check if this is a Cluster element (0x1F43B675)
+                        if (element.id === 0x1F43B675) {
+                            log(`✓ Found Cluster at offset ${startOffset}`, 'success');
+                            return startOffset;
+                        }
+
+                        // For unknown size or Segment, we need to look inside
+                        if (element.isUnknownSize || element.id === 0x18538067) {
+                            // Continue parsing inside this element
+                            continue;
+                        }
+
+                        // Skip to next element
+                        if (element.dataEnd > 0 && element.dataEnd <= this.buffer.byteLength) {
+                            this.offset = element.dataEnd;
+                        } else {
+                            // Can't determine size, move forward byte by byte
+                            this.offset = startOffset + 1;
+                        }
+
+                    } catch (e) {
+                        log(`  Parse error at offset ${startOffset}: ${e.message}`);
+                        // Try to continue
+                        this.offset = startOffset + 1;
+                    }
+                }
+
+                log('✗ Cluster element not found', 'error');
+                return -1;
+            }
+
+            getElementName(id) {
+                const names = {
+                    0x1A45DFA3: 'EBML',
+                    0x4286: 'EBMLVersion',
+                    0x42F7: 'EBMLReadVersion',
+                    0x42F2: 'EBMLMaxIDLength',
+                    0x42F3: 'EBMLMaxSizeLength',
+                    0x4282: 'DocType',
+                    0x4287: 'DocTypeVersion',
+                    0x4285: 'DocTypeReadVersion',
+                    0x18538067: 'Segment',
+                    0x1F43B675: 'Cluster',
+                    0x1549A966: 'Info',
+                    0x1654AE6B: 'Tracks',
+                    0x2AD7B1: 'TimecodeScale',
+                    0x4489: 'Duration',
+                    0xAE: 'TrackEntry',
+                    0xD7: 'TrackNumber',
+                    0x73C5: 'TrackUID',
+                    0x83: 'TrackType',
+                    0x86: 'CodecID',
+                    0x63A2: 'CodecPrivate',
+                    0xE7: 'Timecode',
+                    0xA3: 'SimpleBlock',
+                    0xA1: 'Block',
+                    0x9F: 'Channels',
+                    0xB5: 'SamplingFrequency'
+                };
+                return names[id] || `Unknown(0x${id.toString(16)})`;
+            }
+        }
+
+        // Initialize
+        async function initialize() {
+            log('=== Opus Header Prepending Test Started ===');
+
+            // Check Opus support
+            const opusSupported = MediaRecorder.isTypeSupported('audio/webm;codecs=opus');
+            if (!opusSupported) {
+                log('✗ Opus not supported in this browser', 'error');
+                alert('Opus codec not supported. Please use Chrome or Firefox.');
+                return;
+            }
+
+            log('✓ Opus supported: audio/webm;codecs=opus');
+
+            try {
+                audioStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: { ideal: 48000 },
+                        channelCount: { ideal: 1 }
+                    }
+                });
+
+                log('✓ Microphone access granted');
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 48000
+                });
+
+                log(`✓ AudioContext created (${audioContext.sampleRate}Hz)`);
+
+            } catch (error) {
+                log(`✗ Error: ${error.message}`, 'error');
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        // Step 1: Record
+        document.getElementById('start-recording').addEventListener('click', async () => {
+            chunks = [];
+            startTime = Date.now();
+
+            log('=== Starting Recording ===');
+
+            try {
+                mediaRecorder = new MediaRecorder(audioStream, {
+                    mimeType: 'audio/webm;codecs=opus',
+                    audioBitsPerSecond: 24000
+                });
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data && event.data.size > 0) {
+                        const chunkTime = Date.now() - startTime;
+                        chunks.push(event.data);
+                        log(`📦 Chunk #${chunks.length}: ${event.data.size} bytes at ${chunkTime}ms`);
+                        updateMetric('Total Chunks', chunks.length);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    log(`✓ Recording complete: ${chunks.length} chunks`);
+                    showStatus(document.getElementById('recording-status'),
+                        `Recorded ${chunks.length} chunks. Ready to analyze.`,
+                        'success');
+                    document.getElementById('analyze-structure').disabled = false;
+                    document.getElementById('start-recording').disabled = false;
+                    document.getElementById('stop-recording').disabled = true;
+                };
+
+                mediaRecorder.start(100); // 100ms chunks
+
+                log('✓ Recording started (100ms chunks)');
+                showStatus(document.getElementById('recording-status'),
+                    '🔴 Recording... Speak for 3 seconds',
+                    'warning');
+
+                document.getElementById('start-recording').disabled = true;
+                document.getElementById('stop-recording').disabled = false;
+
+            } catch (error) {
+                log(`✗ Recording error: ${error.message}`, 'error');
+            }
+        });
+
+        document.getElementById('stop-recording').addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                log('Stopping recording...');
+            }
+        });
+
+        // Step 2: Analyze structure
+        document.getElementById('analyze-structure').addEventListener('click', async () => {
+            log('=== Analyzing WebM Structure ===');
+
+            if (chunks.length === 0) {
+                log('✗ No chunks to analyze', 'error');
+                return;
+            }
+
+            const firstChunk = chunks[0];
+            const buffer = await firstChunk.arrayBuffer();
+
+            log(`First chunk size: ${buffer.byteLength} bytes`);
+
+            // Hex dump of first 64 bytes
+            const bytes = new Uint8Array(buffer.slice(0, 64));
+            const hexLines = [];
+            for (let i = 0; i < bytes.length; i += 16) {
+                const slice = bytes.slice(i, i + 16);
+                const hex = Array.from(slice).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                const ascii = Array.from(slice).map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
+                hexLines.push(`${i.toString(16).padStart(4, '0')}: ${hex.padEnd(48, ' ')}  ${ascii}`);
+            }
+
+            const hexDump = `<div class="hex-dump">${hexLines.join('\n')}</div>`;
+
+            // Parse EBML structure
+            const parser = new WebMParser(buffer);
+            const clusterOffset = parser.findClusterStart();
+
+            if (clusterOffset > 0) {
+                log(`✓ Found Cluster element at offset ${clusterOffset}`);
+                log(`  Init segment size: ${clusterOffset} bytes`);
+                log(`  Media segment starts at: ${clusterOffset}`);
+
+                // Extract init segment
+                initSegment = buffer.slice(0, clusterOffset);
+                log(`✓ Extracted init segment (${initSegment.byteLength} bytes)`);
+
+                updateMetric('Init Segment Size', initSegment.byteLength, 'bytes');
+
+                // Show init segment hex
+                const initBytes = new Uint8Array(initSegment.slice(0, 64));
+                const initHexLines = [];
+                for (let i = 0; i < initBytes.length; i += 16) {
+                    const slice = initBytes.slice(i, i + 16);
+                    const hex = Array.from(slice).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                    const ascii = Array.from(slice).map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
+                    initHexLines.push(`${i.toString(16).padStart(4, '0')}: ${hex.padEnd(48, ' ')}  ${ascii}`);
+                }
+
+                const initHexDump = `<div class="hex-dump"><strong>Init Segment (first 64 bytes):</strong>\n${initHexLines.join('\n')}</div>`;
+
+                showStatus(document.getElementById('structure-analysis'),
+                    `✓ WebM structure analyzed. Init segment: ${initSegment.byteLength} bytes, Cluster starts at offset ${clusterOffset}.` +
+                    hexDump + initHexDump,
+                    'success');
+
+                document.getElementById('test-baseline').disabled = false;
+                document.getElementById('test-prepending').disabled = false;
+
+            } else {
+                log('✗ Could not find Cluster element', 'error');
+                showStatus(document.getElementById('structure-analysis'),
+                    '✗ Failed to parse WebM structure. Could not find Cluster element.' + hexDump,
+                    'error');
+            }
+        });
+
+        // Step 3: Baseline test (without prepending)
+        document.getElementById('test-baseline').addEventListener('click', async () => {
+            log('=== Baseline Test: Decoding Chunks WITHOUT Prepending ===');
+
+            let results = [];
+
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                const buffer = await chunk.arrayBuffer();
+
+                try {
+                    log(`Testing chunk #${i + 1} (original)...`);
+                    const audioBuffer = await audioContext.decodeAudioData(buffer.slice(0));
+                    results.push({ index: i, success: true, duration: audioBuffer.duration });
+                    log(`  ✓ Chunk #${i + 1} decoded (duration: ${audioBuffer.duration.toFixed(3)}s)`, 'success');
+                } catch (error) {
+                    results.push({ index: i, success: false, error: error.message });
+                    log(`  ✗ Chunk #${i + 1} failed: ${error.message}`, 'error');
+                }
+            }
+
+            const successCount = results.filter(r => r.success).length;
+            log(`Baseline: ${successCount}/${chunks.length} chunks decoded`);
+
+            updateMetric('Baseline Success', successCount, `/ ${chunks.length}`);
+
+            showStatus(document.getElementById('baseline-results'),
+                `Baseline test complete: ${successCount}/${chunks.length} chunks decoded successfully.` +
+                (successCount === 1 ? ' (Typically only first chunk works)' : ''),
+                successCount > 1 ? 'success' : 'warning');
+
+            window.baselineResults = results;
+        });
+
+        // Step 4: Test with prepending
+        document.getElementById('test-prepending').addEventListener('click', async () => {
+            log('=== Header Prepending Test: Decoding Chunks WITH Prepended Init Segment ===');
+
+            if (!initSegment) {
+                log('✗ Init segment not extracted yet', 'error');
+                return;
+            }
+
+            let results = [];
+
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                const buffer = await chunk.arrayBuffer();
+
+                try {
+                    let testBuffer;
+
+                    if (i === 0) {
+                        // First chunk already has init segment
+                        testBuffer = buffer;
+                        log(`Testing chunk #${i + 1} (original, already has init)...`);
+                    } else {
+                        // Prepend init segment to media segment
+                        const combined = new Uint8Array(initSegment.byteLength + buffer.byteLength);
+                        combined.set(new Uint8Array(initSegment), 0);
+                        combined.set(new Uint8Array(buffer), initSegment.byteLength);
+                        testBuffer = combined.buffer;
+
+                        log(`Testing chunk #${i + 1} (with prepended init, total size: ${testBuffer.byteLength} bytes)...`);
+                        log(`  Original chunk: ${buffer.byteLength} bytes`);
+                        log(`  + Init segment: ${initSegment.byteLength} bytes`);
+                        log(`  = Combined: ${testBuffer.byteLength} bytes`);
+                    }
+
+                    const audioBuffer = await audioContext.decodeAudioData(testBuffer.slice(0));
+                    results.push({
+                        index: i,
+                        success: true,
+                        duration: audioBuffer.duration,
+                        originalSize: buffer.byteLength,
+                        combinedSize: testBuffer.byteLength,
+                        overhead: i === 0 ? 0 : initSegment.byteLength
+                    });
+                    log(`  ✓ Chunk #${i + 1} decoded! Duration: ${audioBuffer.duration.toFixed(3)}s`, 'success');
+
+                } catch (error) {
+                    results.push({
+                        index: i,
+                        success: false,
+                        error: error.message,
+                        originalSize: buffer.byteLength,
+                        combinedSize: i === 0 ? buffer.byteLength : buffer.byteLength + initSegment.byteLength
+                    });
+                    log(`  ✗ Chunk #${i + 1} FAILED: ${error.message}`, 'error');
+                }
+            }
+
+            const successCount = results.filter(r => r.success).length;
+            log(`=== Prepending Test Results ===`);
+            log(`✓ Success: ${successCount}/${chunks.length}`);
+            log(`✗ Failed: ${chunks.length - successCount}/${chunks.length}`);
+
+            updateMetric('Prepending Success', successCount, `/ ${chunks.length}`);
+
+            // Calculate overhead
+            const totalOriginal = results.reduce((sum, r) => sum + r.originalSize, 0);
+            const totalCombined = results.reduce((sum, r) => sum + r.combinedSize, 0);
+            const overheadBytes = totalCombined - totalOriginal;
+            const overheadPercent = ((overheadBytes / totalOriginal) * 100).toFixed(1);
+
+            updateMetric('Overhead', overheadPercent, '%');
+            updateMetric('Overhead Bytes', overheadBytes, 'bytes');
+
+            log(`Overhead: ${overheadBytes} bytes (${overheadPercent}%)`);
+
+            if (successCount === chunks.length) {
+                showStatus(document.getElementById('prepending-results'),
+                    `🎉 SUCCESS! All ${chunks.length} chunks decoded with prepended headers!<br>` +
+                    `Overhead: ${overheadPercent}% (${overheadBytes} bytes total)`,
+                    'success');
+                log('🎉 HEADER PREPENDING WORKS!', 'success');
+                log('✓ Opus chunks can be made independently decodable!', 'success');
+            } else {
+                showStatus(document.getElementById('prepending-results'),
+                    `✗ Header prepending failed: ${successCount}/${chunks.length} chunks decoded.<br>` +
+                    `This approach may not work for Opus/WebM.`,
+                    'error');
+                log('✗ Header prepending did not solve the problem', 'error');
+            }
+
+            window.prependingResults = results;
+
+            // Show comparison
+            showComparison();
+        });
+
+        function showComparison() {
+            const baseline = window.baselineResults || [];
+            const prepending = window.prependingResults || [];
+
+            if (baseline.length === 0 || prepending.length === 0) return;
+
+            const baselineSuccess = baseline.filter(r => r.success).length;
+            const prependingSuccess = prepending.filter(r => r.success).length;
+
+            const html = `
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Baseline (No Prepending)</th>
+                            <th>With Header Prepending</th>
+                            <th>Improvement</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Chunks Decoded</td>
+                            <td>${baselineSuccess} / ${baseline.length}</td>
+                            <td>${prependingSuccess} / ${prepending.length}</td>
+                            <td style="color: ${prependingSuccess > baselineSuccess ? '#4CAF50' : '#f44336'}">
+                                ${prependingSuccess > baselineSuccess ? '✓ Better' : '✗ Same/Worse'}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Success Rate</td>
+                            <td>${((baselineSuccess / baseline.length) * 100).toFixed(1)}%</td>
+                            <td>${((prependingSuccess / prepending.length) * 100).toFixed(1)}%</td>
+                            <td style="color: ${prependingSuccess > baselineSuccess ? '#4CAF50' : '#f44336'}">
+                                ${prependingSuccess > baselineSuccess ? '+' + (((prependingSuccess - baselineSuccess) / baseline.length) * 100).toFixed(1) + '%' : 'No change'}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Overhead</td>
+                            <td>0 bytes</td>
+                            <td>${initSegment ? (initSegment.byteLength * (chunks.length - 1)).toLocaleString() : 'N/A'} bytes</td>
+                            <td>${initSegment ? ((initSegment.byteLength * (chunks.length - 1)) / chunks.reduce((sum, c) => sum + c.size, 0) * 100).toFixed(1) + '%' : 'N/A'}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                ${prependingSuccess === chunks.length ? `
+                    <div class="status success" style="margin-top: 20px;">
+                        <strong>✓ SOLUTION FOUND!</strong><br>
+                        Header prepending successfully makes all Opus chunks independently decodable!<br>
+                        This approach is viable for real-time streaming.
+                    </div>
+                ` : `
+                    <div class="status error" style="margin-top: 20px;">
+                        <strong>✗ SOLUTION NOT VIABLE</strong><br>
+                        Header prepending did not solve the independence problem.<br>
+                        Need to consider alternative approaches (WebCodecs, MSE, or WebRTC).
+                    </div>
+                `}
+            `;
+
+            document.getElementById('comparison-results').innerHTML = html;
+        }
+
+        // Initialize on load
+        initialize();
+    </script>
+</body>
+</html>

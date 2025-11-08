@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AAC Streaming Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        h1 {
+            color: #4CAF50;
+        }
+        .test-section {
+            background: #2a2a2a;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border: 1px solid #444;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background: #1b5e20;
+            color: #a5d6a7;
+            border: 1px solid #4caf50;
+        }
+        .error {
+            background: #b71c1c;
+            color: #ef9a9a;
+            border: 1px solid #f44336;
+        }
+        .info {
+            background: #01579b;
+            color: #81d4fa;
+            border: 1px solid #2196f3;
+        }
+        .warning {
+            background: #e65100;
+            color: #ffcc80;
+            border: 1px solid #ff9800;
+        }
+        button {
+            padding: 12px 24px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: #45a049;
+        }
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        .btn-danger:hover:not(:disabled) {
+            background: #da190b;
+        }
+        .btn-info {
+            background: #2196F3;
+            color: white;
+        }
+        .btn-info:hover:not(:disabled) {
+            background: #0b7dda;
+        }
+        #log {
+            background: #1a1a1a;
+            color: #0f0;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #333;
+        }
+        .log-entry {
+            margin: 3px 0;
+            padding: 2px 0;
+        }
+        .log-timestamp {
+            color: #888;
+            margin-right: 10px;
+        }
+        .chunk-info {
+            display: inline-block;
+            background: #333;
+            padding: 2px 8px;
+            border-radius: 3px;
+            margin: 2px;
+            font-size: 11px;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .metric {
+            background: #333;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+        }
+        .metric-label {
+            color: #999;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        .metric-value {
+            color: #4CAF50;
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎙️ AAC Real-Time Streaming Test</h1>
+
+    <div class="test-section">
+        <h2>Test Objective</h2>
+        <p>Determine if AAC in MP4 container supports real-time chunk streaming for walkie-talkie application.</p>
+        <p><strong>Success Criteria:</strong></p>
+        <ul>
+            <li>MediaRecorder supports <code>audio/mp4;codecs=mp4a.40.2</code></li>
+            <li>100ms chunks can be encoded continuously</li>
+            <li>Individual chunks can be decoded independently</li>
+            <li>Playback latency is acceptable (&lt;150ms)</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>Browser Support Check</h2>
+        <div id="support-check">Checking...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>Recording Test</h2>
+        <button id="start-recording" class="btn-primary">Start Recording (Hold for 3 seconds)</button>
+        <button id="stop-recording" class="btn-danger" disabled>Stop Recording</button>
+        <div id="recording-status" style="margin-top: 10px;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Chunk Decoding Test</h2>
+        <button id="test-decode-chunks" class="btn-info" disabled>Test Decode All Chunks Individually</button>
+        <button id="test-playback" class="btn-primary" disabled>Test Sequential Playback</button>
+        <div id="decode-status" style="margin-top: 10px;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Metrics</h2>
+        <div class="metrics" id="metrics">
+            <!-- Metrics will be populated here -->
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Detailed Log</h2>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        // Test state
+        let mediaRecorder = null;
+        let audioStream = null;
+        let audioContext = null;
+        let chunks = [];
+        let chunkMetadata = [];
+        let startTime = null;
+
+        // DOM elements
+        const startBtn = document.getElementById('start-recording');
+        const stopBtn = document.getElementById('stop-recording');
+        const testDecodeBtn = document.getElementById('test-decode-chunks');
+        const testPlaybackBtn = document.getElementById('test-playback');
+        const supportCheckDiv = document.getElementById('support-check');
+        const recordingStatusDiv = document.getElementById('recording-status');
+        const decodeStatusDiv = document.getElementById('decode-status');
+        const logDiv = document.getElementById('log');
+        const metricsDiv = document.getElementById('metrics');
+
+        // Logging
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                fractionalSecondDigits: 3
+            });
+
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span>${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        function showStatus(element, message, type = 'info') {
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function updateMetric(label, value, unit = '') {
+            let metric = document.querySelector(`[data-metric="${label}"]`);
+            if (!metric) {
+                metric = document.createElement('div');
+                metric.className = 'metric';
+                metric.dataset.metric = label;
+                metric.innerHTML = `
+                    <div class="metric-label">${label}</div>
+                    <div class="metric-value"><span class="value">${value}</span><span class="unit">${unit}</span></div>
+                `;
+                metricsDiv.appendChild(metric);
+            } else {
+                metric.querySelector('.value').textContent = value;
+                metric.querySelector('.unit').textContent = unit;
+            }
+        }
+
+        // Check AAC support
+        function checkAACSupport() {
+            const mimeTypes = [
+                'audio/mp4;codecs=mp4a.40.2',      // AAC-LC (Low Complexity)
+                'audio/mp4;codecs=mp4a.40.5',      // AAC-HE (High Efficiency)
+                'audio/mp4',                        // Generic MP4
+                'audio/aac',                        // Generic AAC
+                'audio/mpeg'                        // MPEG container
+            ];
+
+            let html = '<div>';
+            let supportedMimeType = null;
+
+            mimeTypes.forEach(mimeType => {
+                const supported = MediaRecorder.isTypeSupported(mimeType);
+                const statusClass = supported ? 'success' : 'error';
+                const statusIcon = supported ? '✓' : '✗';
+                html += `<div class="status ${statusClass}">${statusIcon} ${mimeType}: ${supported ? 'SUPPORTED' : 'Not supported'}</div>`;
+
+                if (supported && !supportedMimeType) {
+                    supportedMimeType = mimeType;
+                }
+            });
+
+            html += '</div>';
+            supportCheckDiv.innerHTML = html;
+
+            if (supportedMimeType) {
+                log(`✓ AAC support detected: ${supportedMimeType}`, 'success');
+                return supportedMimeType;
+            } else {
+                log('✗ No AAC support detected in this browser', 'error');
+                return null;
+            }
+        }
+
+        // Initialize
+        async function initialize() {
+            log('=== AAC Streaming Test Started ===');
+
+            const supportedMimeType = checkAACSupport();
+
+            if (!supportedMimeType) {
+                showStatus(recordingStatusDiv,
+                    'AAC not supported in this browser. Please try Chrome or Safari.',
+                    'error');
+                startBtn.disabled = true;
+                return;
+            }
+
+            try {
+                audioStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: { ideal: 48000 },
+                        channelCount: { ideal: 1 }
+                    }
+                });
+
+                log('✓ Microphone access granted');
+                showStatus(recordingStatusDiv, 'Ready to record', 'success');
+
+                // Create AudioContext for decoding
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 48000
+                });
+
+                log(`✓ AudioContext created (sample rate: ${audioContext.sampleRate}Hz)`);
+
+                // Store the supported MIME type for later use
+                window.aacMimeType = supportedMimeType;
+
+            } catch (error) {
+                log(`✗ Error accessing microphone: ${error.message}`, 'error');
+                showStatus(recordingStatusDiv, `Error: ${error.message}`, 'error');
+                startBtn.disabled = true;
+            }
+        }
+
+        // Start recording
+        startBtn.addEventListener('click', async () => {
+            chunks = [];
+            chunkMetadata = [];
+            startTime = Date.now();
+
+            log('=== Starting AAC Recording ===');
+
+            const mimeType = window.aacMimeType;
+
+            try {
+                // Create MediaRecorder with AAC
+                const options = {
+                    mimeType: mimeType,
+                    audioBitsPerSecond: 64000  // 64 kbps for voice
+                };
+
+                log(`Creating MediaRecorder with options: ${JSON.stringify(options)}`);
+
+                mediaRecorder = new MediaRecorder(audioStream, options);
+
+                log(`✓ MediaRecorder created`);
+                log(`  - MIME type: ${mediaRecorder.mimeType}`);
+                log(`  - State: ${mediaRecorder.state}`);
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data && event.data.size > 0) {
+                        const chunkTime = Date.now() - startTime;
+                        chunks.push(event.data);
+
+                        const metadata = {
+                            index: chunks.length - 1,
+                            size: event.data.size,
+                            timestamp: chunkTime,
+                            type: event.data.type
+                        };
+                        chunkMetadata.push(metadata);
+
+                        log(`📦 Chunk #${chunks.length}: ${event.data.size} bytes at ${chunkTime}ms` +
+                            ` <span class="chunk-info">${event.data.type}</span>`);
+
+                        updateMetric('Total Chunks', chunks.length);
+                        updateMetric('Total Size', (chunks.reduce((sum, c) => sum + c.size, 0) / 1024).toFixed(2), 'KB');
+
+                        const avgSize = chunks.reduce((sum, c) => sum + c.size, 0) / chunks.length;
+                        updateMetric('Avg Chunk Size', avgSize.toFixed(0), 'bytes');
+                    }
+                };
+
+                mediaRecorder.onerror = (event) => {
+                    log(`✗ MediaRecorder error: ${event.error}`, 'error');
+                    showStatus(recordingStatusDiv, `Error: ${event.error}`, 'error');
+                };
+
+                mediaRecorder.onstop = () => {
+                    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+                    log(`✓ Recording stopped. Duration: ${duration}s, Chunks: ${chunks.length}`);
+
+                    updateMetric('Duration', duration, 's');
+                    updateMetric('Bitrate', ((chunks.reduce((sum, c) => sum + c.size, 0) * 8) / duration / 1000).toFixed(0), 'kbps');
+
+                    showStatus(recordingStatusDiv,
+                        `Recorded ${chunks.length} chunks in ${duration}s. Ready to test decoding.`,
+                        'success');
+
+                    testDecodeBtn.disabled = false;
+                    testPlaybackBtn.disabled = false;
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                };
+
+                // Start recording with 100ms chunks (same as walkie-talkie)
+                mediaRecorder.start(100);
+
+                log(`✓ Recording started with 100ms timeslice`);
+                showStatus(recordingStatusDiv, '🔴 Recording... (speak for 3 seconds)', 'warning');
+
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+
+            } catch (error) {
+                log(`✗ Failed to start recording: ${error.message}`, 'error');
+                showStatus(recordingStatusDiv, `Error: ${error.message}`, 'error');
+            }
+        });
+
+        // Stop recording
+        stopBtn.addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                log('Stopping recording...');
+            }
+        });
+
+        // Test decoding individual chunks
+        testDecodeBtn.addEventListener('click', async () => {
+            log('=== Testing Individual Chunk Decoding ===');
+            showStatus(decodeStatusDiv, 'Testing chunk decoding...', 'info');
+
+            let successCount = 0;
+            let failCount = 0;
+            const results = [];
+
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                const metadata = chunkMetadata[i];
+
+                try {
+                    log(`Testing chunk #${i + 1}/${chunks.length} (${chunk.size} bytes)...`);
+
+                    // Convert Blob to ArrayBuffer
+                    const arrayBuffer = await chunk.arrayBuffer();
+
+                    // Log first bytes for inspection
+                    const firstBytes = new Uint8Array(arrayBuffer.slice(0, 16));
+                    const hex = Array.from(firstBytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                    const ascii = Array.from(firstBytes).map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
+
+                    log(`  First bytes: ${hex}`);
+                    log(`  ASCII: ${ascii}`);
+
+                    // Try to decode with Web Audio API
+                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+
+                    successCount++;
+                    results.push({
+                        index: i,
+                        success: true,
+                        duration: audioBuffer.duration,
+                        sampleRate: audioBuffer.sampleRate,
+                        channels: audioBuffer.numberOfChannels
+                    });
+
+                    log(`  ✓ Chunk #${i + 1} decoded successfully:`, 'success');
+                    log(`    - Duration: ${audioBuffer.duration.toFixed(3)}s`);
+                    log(`    - Sample rate: ${audioBuffer.sampleRate}Hz`);
+                    log(`    - Channels: ${audioBuffer.numberOfChannels}`);
+
+                } catch (error) {
+                    failCount++;
+                    results.push({
+                        index: i,
+                        success: false,
+                        error: error.message
+                    });
+
+                    log(`  ✗ Chunk #${i + 1} failed to decode: ${error.message}`, 'error');
+                }
+            }
+
+            // Summary
+            log('=== Decoding Test Results ===');
+            log(`✓ Success: ${successCount}/${chunks.length}`);
+            log(`✗ Failed: ${failCount}/${chunks.length}`);
+
+            updateMetric('Decoded Successfully', successCount, `/ ${chunks.length}`);
+            updateMetric('Decode Success Rate', ((successCount / chunks.length) * 100).toFixed(1), '%');
+
+            if (successCount === chunks.length) {
+                showStatus(decodeStatusDiv,
+                    `🎉 SUCCESS! All ${chunks.length} chunks decoded independently!`,
+                    'success');
+                log('🎉 AAC CHUNKS CAN BE DECODED INDEPENDENTLY!', 'success');
+                log('✓ This means AAC can work for real-time streaming!', 'success');
+            } else if (successCount > 0) {
+                showStatus(decodeStatusDiv,
+                    `⚠ Partial success: ${successCount}/${chunks.length} chunks decoded. Check log for details.`,
+                    'warning');
+                log('⚠ Some chunks decoded, but not all. May need further investigation.', 'warning');
+            } else {
+                showStatus(decodeStatusDiv,
+                    `✗ FAILED: No chunks could be decoded independently.`,
+                    'error');
+                log('✗ AAC chunks cannot be decoded independently (same problem as Opus/WebM)', 'error');
+            }
+
+            // Store results for analysis
+            window.aacTestResults = results;
+        });
+
+        // Test sequential playback
+        testPlaybackBtn.addEventListener('click', async () => {
+            log('=== Testing Sequential Playback ===');
+            showStatus(decodeStatusDiv, 'Playing chunks sequentially...', 'info');
+
+            let totalLatency = 0;
+
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+
+                try {
+                    const decodeStart = performance.now();
+                    const arrayBuffer = await chunk.arrayBuffer();
+                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+                    const decodeTime = performance.now() - decodeStart;
+
+                    totalLatency += decodeTime;
+
+                    log(`Playing chunk #${i + 1} (decode time: ${decodeTime.toFixed(2)}ms)`);
+
+                    // Play the audio
+                    const source = audioContext.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(audioContext.destination);
+                    source.start();
+
+                    // Wait for playback to complete
+                    await new Promise(resolve => {
+                        source.onended = resolve;
+                    });
+
+                } catch (error) {
+                    log(`✗ Failed to play chunk #${i + 1}: ${error.message}`, 'error');
+                }
+            }
+
+            const avgLatency = totalLatency / chunks.length;
+            updateMetric('Avg Decode Latency', avgLatency.toFixed(2), 'ms');
+
+            log(`=== Playback Complete ===`);
+            log(`Average decode latency: ${avgLatency.toFixed(2)}ms`);
+
+            if (avgLatency < 150) {
+                showStatus(decodeStatusDiv,
+                    `✓ Playback successful! Avg latency: ${avgLatency.toFixed(2)}ms (acceptable)`,
+                    'success');
+            } else {
+                showStatus(decodeStatusDiv,
+                    `⚠ Playback successful but latency high: ${avgLatency.toFixed(2)}ms`,
+                    'warning');
+            }
+        });
+
+        // Initialize on load
+        initialize();
+    </script>
+</body>
+</html>
