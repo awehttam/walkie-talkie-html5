@@ -73,28 +73,42 @@ class WalkieTalkie {
     }
 
     async initializeCodecs() {
-        // Initialize Opus codec if available
-        if (typeof OpusCodec !== 'undefined') {
-            this.opusCodec = new OpusCodec();
-            this.codecSupport.opus = this.opusCodec.isSupported && this.opusCodec.browserSupportsHeaderPrepending;
+        // Try WebCodecs first (best performance, no decode blocking)
+        if (typeof WebCodecsOpus !== 'undefined') {
+            this.webCodecsOpus = new WebCodecsOpus();
 
-            if (this.opusCodec.isSupported) {
-                if (this.opusCodec.browserSupportsHeaderPrepending) {
-                    console.log('✓ Opus codec with header prepending support detected');
-                    await this.opusCodec.initEncoder({ bitrate: 24000, sampleRate: 48000 });
-                    await this.opusCodec.initDecoder({ sampleRate: 48000 });
-                } else {
-                    console.warn('⚠ Opus detected but header prepending not reliable in this browser (Firefox)');
-                    console.log('  Falling back to PCM16 for better compatibility');
-                    this.selectedCodec = 'pcm16';
+            if (this.webCodecsOpus.isSupported) {
+                console.log('✓ WebCodecs Opus available (preferred method)');
+                try {
+                    await this.webCodecsOpus.initEncoder({ bitrate: 24000, sampleRate: 48000 });
+                    await this.webCodecsOpus.initDecoder({ sampleRate: 48000 });
+                    this.codecSupport.opus = true;
+                    this.usingWebCodecs = true;
+                    console.log('✓ WebCodecs Opus initialized successfully');
+                } catch (error) {
+                    console.warn('⚠ WebCodecs Opus init failed:', error.message);
+                    this.usingWebCodecs = false;
                 }
             } else {
-                console.log('Opus codec not supported in this browser, using PCM16 only');
+                console.log('WebCodecs not supported, trying MediaRecorder...');
+                this.usingWebCodecs = false;
+            }
+        }
+
+        // Fallback to MediaRecorder with header prepending
+        if (!this.usingWebCodecs && typeof OpusCodec !== 'undefined') {
+            this.opusCodec = new OpusCodec();
+
+            if (this.opusCodec.isSupported && this.opusCodec.browserSupportsHeaderPrepending) {
+                console.log('✓ Opus codec with header prepending (fallback method)');
+                await this.opusCodec.initEncoder({ bitrate: 24000, sampleRate: 48000 });
+                await this.opusCodec.initDecoder({ sampleRate: 48000 });
+                this.codecSupport.opus = true;
+            } else {
+                console.log('Opus not available, using PCM16 only');
+                this.codecSupport.opus = false;
                 this.selectedCodec = 'pcm16';
             }
-        } else {
-            console.log('OpusCodec library not loaded, using PCM16 only');
-            this.selectedCodec = 'pcm16';
         }
 
         // Validate selected codec is supported
@@ -844,20 +858,59 @@ class WalkieTalkie {
             await this.audioContext.resume();
         }
 
-        // Create MediaRecorder with Opus codec
-        this.opusMediaRecorder = this.opusCodec.createStreamEncoder(
-            this.audioStream,
-            (encodedData) => {
-                if (!this.isRecording) return;
+        // Use WebCodecs if available (much better performance)
+        if (this.usingWebCodecs) {
+            await this.setupWebCodecsStreaming();
+        } else {
+            // Fallback to MediaRecorder with header prepending
+            this.opusMediaRecorder = this.opusCodec.createStreamEncoder(
+                this.audioStream,
+                (encodedData) => {
+                    if (!this.isRecording) return;
+                    this.sendOpusAudio(encodedData.data, encodedData.mimeType);
+                }
+            );
 
-                // Send in real-time with actual MIME type
-                this.sendOpusAudio(encodedData.data, encodedData.mimeType);
-            }
-        );
+            this.opusMediaRecorder.start(100);
+            console.log('Opus MediaRecorder started (fallback method)');
+        }
+    }
 
-        // Start recording with small timeslices for low latency (100ms)
-        this.opusMediaRecorder.start(100);
-        console.log('Opus MediaRecorder started (real-time streaming)');
+    async setupWebCodecsStreaming() {
+        // Set up WebCodecs encoder
+        this.webCodecsOpus.createEncoder((chunk) => {
+            if (!this.isRecording) return;
+            this.sendOpusAudio(chunk.data, 'audio/opus');
+        });
+
+        // Process audio from microphone using ScriptProcessor
+        const source = this.audioContext.createMediaStreamSource(this.audioStream);
+        const processor = this.audioContext.createScriptProcessor(4800, 1, 1); // 100ms at 48kHz
+
+        source.connect(processor);
+        processor.connect(this.audioContext.destination);
+
+        processor.onaudioprocess = (e) => {
+            if (!this.isRecording) return;
+
+            const inputData = e.inputBuffer.getChannelData(0);
+
+            const audioData = new AudioData({
+                format: 'f32-planar',
+                sampleRate: this.audioContext.sampleRate,
+                numberOfFrames: inputData.length,
+                numberOfChannels: 1,
+                timestamp: this.audioContext.currentTime * 1000000,
+                data: inputData
+            });
+
+            this.webCodecsOpus.encodeAudioData(audioData);
+        };
+
+        this.webCodecsProcessor = processor;
+        this.webCodecsSource = source;
+
+        console.log('WebCodecs Opus streaming started (high performance mode)');
     }
 
     sendOpusAudio(base64Data, mimeType) {
@@ -1214,126 +1267,96 @@ class WalkieTalkie {
         try {
             if (!base64Data || base64Data.length === 0) return;
 
-            // Strip data URL prefix if present (safety check)
+            // Strip data URL prefix if present
             if (base64Data.startsWith('data:')) {
                 const commaIndex = base64Data.indexOf(',');
                 if (commaIndex !== -1) {
                     base64Data = base64Data.substring(commaIndex + 1);
-                    console.log('Stripped data URL prefix from Opus data');
                 }
             }
 
-            // Convert base64 to blob
-            const binaryString = atob(base64Data);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-
-            const mimeType = providedMimeType || 'audio/webm;codecs=opus';
-
-            // Create blob with MIME type
-            const blob = new Blob([bytes], { type: mimeType });
-            const url = URL.createObjectURL(blob);
-
-            console.log('Queueing Opus chunk for playback, size:', bytes.length, 'MIME type:', mimeType);
-
-            // Queue the audio for playback
-            this.queueOpusChunk(url, mimeType);
-
-        } catch (error) {
-            console.error('Error playing Opus audio:', error);
-        }
-    }
-
-    queueOpusChunk(url, mimeType) {
-        // Use a sequential playback queue for Opus chunks
-        if (!this.opusPlaybackQueue) {
-            this.opusPlaybackQueue = [];
-            this.isPlayingOpus = false;
-        }
-
-        this.opusPlaybackQueue.push(url);
-
-        // Start playing if not already playing
-        if (!this.isPlayingOpus) {
-            this.playNextOpusChunk();
-        }
-    }
-
-    playNextOpusChunk() {
-        if (this.opusPlaybackQueue.length === 0) {
-            this.isPlayingOpus = false;
-            return;
-        }
-
-        this.isPlayingOpus = true;
-        const url = this.opusPlaybackQueue.shift();
-
-        const audio = new Audio(url);
-        const volume = this.volumeControl ? this.volumeControl.value / 100 : 0.5;
-        audio.volume = volume;
-
-        audio.onended = () => {
-            URL.revokeObjectURL(url);
-            // Play next chunk immediately
-            this.playNextOpusChunk();
-        };
-
-        audio.onerror = (error) => {
-            console.error('Opus chunk play error:', error);
-            URL.revokeObjectURL(url);
-            // Skip to next chunk
-            this.playNextOpusChunk();
-        };
-
-        audio.play().catch(error => {
-            console.error('Failed to play Opus chunk:', error);
-            URL.revokeObjectURL(url);
-            this.playNextOpusChunk();
-        });
-
-        console.log('Playing Opus chunk, queue size:', this.opusPlaybackQueue.length);
-    }
-
-    async playOpusViaWebAudio(base64Data, sampleRate) {
-        // Fallback method using Web Audio API
-        try {
+            // Initialize audio context
             if (!this.audioContext) {
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 48000
+                });
             }
 
             if (this.audioContext.state === 'suspended') {
                 await this.audioContext.resume();
             }
 
-            if (this.opusCodec && this.codecSupport.opus) {
+            // Use WebCodecs for decoding if available (faster, no blocking)
+            if (this.usingWebCodecs) {
+                await this.playOpusViaWebCodecs(base64Data);
+            } else if (this.opusCodec && this.codecSupport.opus) {
+                // Fallback to MediaRecorder decode (slower, may block)
                 const audioBuffer = await this.opusCodec.decode(base64Data, this.audioContext);
-
-                const source = this.audioContext.createBufferSource();
-                source.buffer = audioBuffer;
-
-                const gainNode = this.audioContext.createGain();
-                const volume = this.volumeControl ? this.volumeControl.value / 100 : 0.5;
-                gainNode.gain.value = volume;
-
-                source.connect(gainNode);
-                gainNode.connect(this.audioContext.destination);
-                source.start();
-
-                this.currentAudioSource = source;
-
-                source.onended = () => {
-                    if (this.currentAudioSource === source) {
-                        this.currentAudioSource = null;
-                    }
-                };
-
-                console.log('Playing Opus via Web Audio API fallback');
+                this.playAudioBuffer(audioBuffer);
             }
+
         } catch (error) {
-            console.error('Web Audio API fallback also failed:', error);
+            console.error('Error playing Opus audio:', error);
         }
+    }
+
+    async playOpusViaWebCodecs(base64Data) {
+        // Lazy init decoder
+        if (!this.webCodecsDecoder) {
+            this.webCodecsDecoder = this.webCodecsOpus.createDecoder((audioData) => {
+                // Convert AudioData to AudioBuffer and play
+                this.playAudioDataImmediate(audioData);
+            });
+        }
+
+        // Decode the chunk (non-blocking, fast!)
+        this.webCodecsOpus.decode(base64Data, performance.now() * 1000);
+    }
+
+    playAudioDataImmediate(audioData) {
+        try {
+            // Convert AudioData to AudioBuffer
+            const audioBuffer = this.audioContext.createBuffer(
+                audioData.numberOfChannels,
+                audioData.numberOfFrames,
+                audioData.sampleRate
+            );
+
+            // Copy audio data
+            const tempBuffer = new Float32Array(audioData.numberOfFrames);
+            audioData.copyTo(tempBuffer, { planeIndex: 0 });
+            audioBuffer.getChannelData(0).set(tempBuffer);
+
+            // Close AudioData to free memory
+            audioData.close();
+
+            // Play it
+            this.playAudioBuffer(audioBuffer);
+
+        } catch (error) {
+            console.error('Error converting AudioData:', error);
+        }
+    }
+
+    playAudioBuffer(audioBuffer) {
+        const source = this.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+
+        const gainNode = this.audioContext.createGain();
+        const volume = this.volumeControl ? this.volumeControl.value / 100 : 0.5;
+        gainNode.gain.value = volume;
+
+        source.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        source.start();
+
+        this.currentAudioSource = source;
+
+        source.onended = () => {
+            if (this.currentAudioSource === source) {
+                this.currentAudioSource = null;
+            }
+        };
     }
 
     async playPCMAudio(base64Data, sampleRate, channels) {

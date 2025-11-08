@@ -138,6 +138,7 @@ if (file_exists(__DIR__ . '/../templates/header.php')) {
     </div>
 
     <script src="assets/opus-codec.js?v=<?php echo time(); ?>"></script>
+    <script src="assets/webcodecs-opus.js?v=<?php echo time(); ?>"></script>
     <script src="assets/walkie-talkie.js?v=<?php echo time(); ?>"></script>
     <script>
         let deferredPrompt;

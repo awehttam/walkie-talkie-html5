@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebCodecs Opus Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        h1 { color: #4CAF50; }
+        .status { padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .success { background: #1b5e20; border: 1px solid #4caf50; }
+        .error { background: #b71c1c; border: 1px solid #f44336; }
+        .info { background: #01579b; border: 1px solid #2196f3; }
+        button {
+            padding: 12px 24px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            background: #4CAF50;
+            color: white;
+        }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        #log {
+            background: #000;
+            color: #0f0;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #333;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎙️ WebCodecs Opus Test</h1>
+
+    <div id="support-check"></div>
+
+    <div>
+        <button id="test-encode-decode">Test Encode→Decode</button>
+        <button id="test-realtime">Test Real-Time (Mic)</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script src="assets/webcodecs-opus.js"></script>
+    <script>
+        const logDiv = document.getElementById('log');
+
+        function log(msg) {
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${time}] ${msg}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(msg);
+        }
+
+        // Check support
+        async function checkSupport() {
+            const div = document.getElementById('support-check');
+
+            const checks = {
+                'AudioEncoder': typeof AudioEncoder !== 'undefined',
+                'AudioDecoder': typeof AudioDecoder !== 'undefined',
+                'AudioData': typeof AudioData !== 'undefined',
+                'EncodedAudioChunk': typeof EncodedAudioChunk !== 'undefined'
+            };
+
+            let html = '<h2>Browser Support</h2>';
+            let allSupported = true;
+
+            for (const [api, supported] of Object.entries(checks)) {
+                const statusClass = supported ? 'success' : 'error';
+                const icon = supported ? '✓' : '✗';
+                html += `<div class="status ${statusClass}">${icon} ${api}: ${supported ? 'Supported' : 'Not Supported'}</div>`;
+                if (!supported) allSupported = false;
+            }
+
+            if (allSupported) {
+                // Check Opus specifically
+                try {
+                    const encSupport = await AudioEncoder.isConfigSupported({
+                        codec: 'opus',
+                        sampleRate: 48000,
+                        numberOfChannels: 1,
+                        bitrate: 24000
+                    });
+
+                    const decSupport = await AudioDecoder.isConfigSupported({
+                        codec: 'opus',
+                        sampleRate: 48000,
+                        numberOfChannels: 1
+                    });
+
+                    html += `<div class="status ${encSupport.supported ? 'success' : 'error'}">
+                        ${encSupport.supported ? '✓' : '✗'} Opus Encoding: ${encSupport.supported ? 'Supported' : 'Not Supported'}
+                    </div>`;
+
+                    html += `<div class="status ${decSupport.supported ? 'success' : 'error'}">
+                        ${decSupport.supported ? '✓' : '✗'} Opus Decoding: ${decSupport.supported ? 'Supported' : 'Not Supported'}
+                    </div>`;
+
+                    if (encSupport.supported && decSupport.supported) {
+                        html += '<div class="status success"><strong>✓ WebCodecs Opus is fully supported!</strong></div>';
+                        log('✓ WebCodecs Opus fully supported');
+                    }
+                } catch (e) {
+                    html += `<div class="status error">Error checking Opus support: ${e.message}</div>`;
+                }
+            } else {
+                html += '<div class="status error"><strong>✗ WebCodecs not supported in this browser</strong><br>Try Chrome 94+, Edge 94+, or Firefox 130+</div>';
+                log('✗ WebCodecs not supported');
+            }
+
+            div.innerHTML = html;
+        }
+
+        // Test encode/decode cycle
+        document.getElementById('test-encode-decode').addEventListener('click', async () => {
+            log('=== Testing WebCodecs Encode→Decode ===');
+
+            try {
+                const codec = new WebCodecsOpus();
+
+                await codec.initEncoder({ bitrate: 24000, sampleRate: 48000 });
+                await codec.initDecoder({ sampleRate: 48000 });
+
+                log('✓ Encoder and decoder initialized');
+
+                // Create test audio data (silence)
+                const sampleRate = 48000;
+                const duration = 0.1; // 100ms
+                const numberOfSamples = sampleRate * duration;
+                const channelData = new Float32Array(numberOfSamples);
+
+                // Add a tone so we can hear it
+                for (let i = 0; i < numberOfSamples; i++) {
+                    channelData[i] = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.5;
+                }
+
+                const audioData = new AudioData({
+                    format: 'f32-planar',
+                    sampleRate: sampleRate,
+                    numberOfFrames: numberOfSamples,
+                    numberOfChannels: 1,
+                    timestamp: 0,
+                    data: channelData
+                });
+
+                log(`Created test audio: ${numberOfSamples} samples, ${duration}s`);
+
+                // Encode
+                const encodedChunks = [];
+                codec.createEncoder((chunk) => {
+                    log(`✓ Encoded chunk: ${chunk.byteLength} bytes`);
+                    encodedChunks.push(chunk);
+                });
+
+                codec.encodeAudioData(audioData);
+                await codec.flush();
+
+                log(`✓ Encoding complete: ${encodedChunks.length} chunks`);
+
+                if (encodedChunks.length === 0) {
+                    log('✗ No encoded chunks produced!');
+                    return;
+                }
+
+                // Decode
+                const decodedAudioData = [];
+                codec.createDecoder((audioData) => {
+                    log(`✓ Decoded audio: ${audioData.numberOfFrames} frames`);
+                    decodedAudioData.push(audioData);
+                });
+
+                for (const chunk of encodedChunks) {
+                    codec.decode(chunk.data, chunk.timestamp);
+                }
+
+                await codec.flush();
+
+                log(`✓ Decoding complete: ${decodedAudioData.length} frames`);
+
+                // Play the decoded audio
+                if (decodedAudioData.length > 0) {
+                    log('✓ Playing decoded audio...');
+                    await playAudioData(decodedAudioData[0]);
+                }
+
+                log('=== Test Complete! ===');
+
+            } catch (error) {
+                log(`✗ Error: ${error.message}`);
+                console.error(error);
+            }
+        });
+
+        // Play AudioData
+        async function playAudioData(audioData) {
+            const audioContext = new AudioContext();
+            const audioBuffer = audioContext.createBuffer(
+                audioData.numberOfChannels,
+                audioData.numberOfFrames,
+                audioData.sampleRate
+            );
+
+            // Copy data
+            const tempBuffer = new Float32Array(audioData.numberOfFrames);
+            audioData.copyTo(tempBuffer, { planeIndex: 0 });
+            audioBuffer.getChannelData(0).set(tempBuffer);
+
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start();
+
+            audioData.close();
+        }
+
+        // Test real-time
+        document.getElementById('test-realtime').addEventListener('click', async () => {
+            log('=== Testing Real-Time Encoding ===');
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                log('✓ Microphone access granted');
+
+                const codec = new WebCodecsOpus();
+                await codec.initEncoder({ bitrate: 24000, sampleRate: 48000 });
+                log('✓ Encoder initialized');
+
+                let chunkCount = 0;
+                codec.createEncoder((chunk) => {
+                    chunkCount++;
+                    log(`Encoded chunk #${chunkCount}: ${chunk.byteLength} bytes`);
+
+                    if (chunkCount >= 30) {
+                        stream.getTracks().forEach(track => track.stop());
+                        log('=== Real-time test complete ===');
+                    }
+                });
+
+                // Process audio from mic
+                const audioContext = new AudioContext({ sampleRate: 48000 });
+                const source = audioContext.createMediaStreamSource(stream);
+                const processor = audioContext.createScriptProcessor(4800, 1, 1);
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                processor.onaudioprocess = (e) => {
+                    const inputData = e.inputBuffer.getChannelData(0);
+
+                    const audioData = new AudioData({
+                        format: 'f32-planar',
+                        sampleRate: audioContext.sampleRate,
+                        numberOfFrames: inputData.length,
+                        numberOfChannels: 1,
+                        timestamp: audioContext.currentTime * 1000000,
+                        data: inputData
+                    });
+
+                    codec.encodeAudioData(audioData);
+                };
+
+                log('✓ Recording... speak for a few seconds');
+
+            } catch (error) {
+                log(`✗ Error: ${error.message}`);
+                console.error(error);
+            }
+        });
+
+        // Run support check on load
+        checkSupport();
+    </script>
+</body>
+</html>
