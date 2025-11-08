@@ -1213,6 +1213,15 @@ class WalkieTalkie {
                 await this.audioContext.resume();
             }
 
+            // Strip data URL prefix if present (safety check)
+            if (base64Data.startsWith('data:')) {
+                const commaIndex = base64Data.indexOf(',');
+                if (commaIndex !== -1) {
+                    base64Data = base64Data.substring(commaIndex + 1);
+                    console.log('Stripped data URL prefix from Opus data');
+                }
+            }
+
             // Use Opus decoder if available
             if (this.opusCodec && this.codecSupport.opus) {
                 const audioBuffer = await this.opusCodec.decode(base64Data, this.audioContext);
