@@ -51,16 +51,80 @@ class WalkieTalkie {
         this.currentPlayingHistoryIndex = -1;
         this.singlePlaybackTimeout = null;
         this.currentAudioSource = null;
+
+        // Codec support
+        this.opusCodec = null;
+        this.selectedCodec = localStorage.getItem('preferred_codec') || 'pcm16';
+        this.codecSupport = {
+            pcm16: true,  // Always supported
+            opus: false   // Detected on init
+        };
     }
 
     async init() {
         this.setupUI();
         await this.loadConfig();
+        await this.initializeCodecs();
         await this.checkAuthentication();
         this.connectWebSocket();
         this.requestMicrophoneAccess();
         this.setupNotifications();
         this.trackAppVisibility();
+    }
+
+    async initializeCodecs() {
+        // Initialize Opus codec if available
+        if (typeof OpusCodec !== 'undefined') {
+            this.opusCodec = new OpusCodec();
+            this.codecSupport.opus = this.opusCodec.isSupported;
+
+            if (this.codecSupport.opus) {
+                console.log('Opus codec support detected');
+                await this.opusCodec.initEncoder({ bitrate: 24000, sampleRate: 48000 });
+                await this.opusCodec.initDecoder({ sampleRate: 48000 });
+            } else {
+                console.log('Opus codec not supported, using PCM16 only');
+                this.selectedCodec = 'pcm16';
+            }
+        } else {
+            console.log('OpusCodec library not loaded, using PCM16 only');
+            this.selectedCodec = 'pcm16';
+        }
+
+        // Validate selected codec is supported
+        if (!this.codecSupport[this.selectedCodec]) {
+            console.log(`Selected codec ${this.selectedCodec} not supported, falling back to pcm16`);
+            this.selectedCodec = 'pcm16';
+            localStorage.setItem('preferred_codec', 'pcm16');
+        }
+
+        // Update UI with codec status
+        this.updateCodecStatus();
+    }
+
+    updateCodecStatus() {
+        if (!this.codecStatus) return;
+
+        const statusMessages = {
+            pcm16: 'PCM16: Always supported (uncompressed audio)',
+            opus: this.codecSupport.opus
+                ? 'Opus: Supported! (98% bandwidth reduction)'
+                : 'Opus: Not supported in this browser'
+        };
+
+        this.codecStatus.textContent = statusMessages[this.selectedCodec] || 'Unknown codec';
+
+        // Update select element if needed
+        if (this.codecSelect) {
+            this.codecSelect.value = this.selectedCodec;
+
+            // Disable opus option if not supported
+            const opusOption = this.codecSelect.querySelector('option[value="opus"]');
+            if (opusOption && !this.codecSupport.opus) {
+                opusOption.disabled = true;
+                opusOption.textContent += ' (Not supported)';
+            }
+        }
     }
 
     async loadConfig() {
@@ -330,6 +394,32 @@ class WalkieTalkie {
             });
         }
 
+        // Setup codec selector
+        this.codecSelect = document.getElementById('codec-select');
+        this.codecStatus = document.getElementById('codec-status');
+
+        if (this.codecSelect) {
+            // Set initial value from localStorage
+            this.codecSelect.value = this.selectedCodec;
+
+            this.codecSelect.addEventListener('change', (e) => {
+                const newCodec = e.target.value;
+
+                // Check if codec is supported
+                if (!this.codecSupport[newCodec]) {
+                    alert(`${newCodec.toUpperCase()} codec is not supported in your browser. Please use PCM16.`);
+                    e.target.value = this.selectedCodec;
+                    return;
+                }
+
+                this.selectedCodec = newCodec;
+                localStorage.setItem('preferred_codec', newCodec);
+                console.log('Selected codec:', newCodec);
+
+                this.updateCodecStatus();
+            });
+        }
+
         // Setup history panel
         const historyToggle = document.getElementById('history-toggle');
         const historyPanel = document.getElementById('history-panel');
@@ -512,11 +602,17 @@ class WalkieTalkie {
                     break;
                 }
 
-                if (data.format === 'encoded') {
-                    this.playEncodedAudio(data.data, data.mimeType || 'audio/webm');
-                } else if (data.format === 'pcm16') {
+                // Determine codec (check both codec and format fields for compatibility)
+                const codec = data.codec || data.format || 'pcm16';
+
+                if (codec === 'opus') {
+                    this.playOpusAudio(data.data, data.sampleRate || 48000);
+                } else if (codec === 'pcm16' || data.format === 'pcm16') {
                     this.playPCMAudio(data.data, data.sampleRate || 44100, data.channels || 1);
+                } else if (data.format === 'encoded') {
+                    this.playEncodedAudio(data.data, data.mimeType || 'audio/webm');
                 } else {
+                    // Fallback
                     this.playEncodedAudio(data.data, data.mimeType || 'audio/webm');
                 }
                 break;
@@ -663,8 +759,14 @@ class WalkieTalkie {
         if (!this.audioStream || !this.isConnected || this.isRecording) return;
 
         try {
-            // Use simple PCM audio processing
-            await this.setupSimplePCMStreaming();
+            // Setup codec-specific streaming
+            if (this.selectedCodec === 'opus' && this.codecSupport.opus) {
+                await this.setupOpusStreaming();
+                console.log('Started Opus audio streaming');
+            } else {
+                await this.setupSimplePCMStreaming();
+                console.log('Started PCM16 audio streaming');
+            }
 
             this.isRecording = true;
             this.isSpeaking = true;
@@ -675,8 +777,6 @@ class WalkieTalkie {
                 channel: this.channel,
                 clientId: this.clientId
             }));
-
-            console.log('Started simple PCM audio streaming');
         } catch (error) {
             console.error('Failed to start streaming:', error);
         }
@@ -728,6 +828,52 @@ class WalkieTalkie {
         this.muteGain.connect(this.audioContext.destination);
     }
 
+    async setupOpusStreaming() {
+        // Create audio context
+        if (!this.audioContext) {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+        }
+
+        if (this.audioContext.state === 'suspended') {
+            await this.audioContext.resume();
+        }
+
+        // Create MediaRecorder with Opus codec
+        this.opusMediaRecorder = this.opusCodec.createStreamEncoder(
+            this.audioStream,
+            (encodedData) => {
+                if (!this.isRecording) return;
+
+                // Send Opus encoded data
+                this.sendOpusAudio(encodedData.data);
+            }
+        );
+
+        // Start recording with 100ms chunks for low latency
+        this.opusMediaRecorder.start(100);
+    }
+
+    sendOpusAudio(base64Data) {
+        try {
+            const audioMessage = {
+                type: 'audio_data',
+                channel: this.channel,
+                data: base64Data,
+                codec: 'opus',
+                format: 'opus',
+                sampleRate: 48000,
+                channels: 1,
+                bitrate: 24000,
+                clientId: this.clientId,
+                excludeSender: true
+            };
+
+            this.ws.send(JSON.stringify(audioMessage));
+        } catch (error) {
+            console.error('Failed to send Opus audio:', error);
+        }
+    }
+
     sendSimplePCM(pcm16Data) {
         try {
             const uint8Array = new Uint8Array(pcm16Data.buffer);
@@ -737,20 +883,13 @@ class WalkieTalkie {
                 type: 'audio_data',
                 channel: this.channel,
                 data: base64Audio,
+                codec: 'pcm16',
                 format: 'pcm16',
                 sampleRate: this.audioContext.sampleRate,
                 channels: 1,
                 clientId: this.clientId,
                 excludeSender: true // Hint for server to not echo back
             };
-
-            // console.log('Sending audio_data:', {
-            //     format: audioMessage.format,
-            //     sampleRate: audioMessage.sampleRate,
-            //     dataLength: audioMessage.data.length,
-            //     channel: audioMessage.channel,
-            //     pcm16Length: pcm16Data.length
-            // });
 
             this.ws.send(JSON.stringify(audioMessage));
         } catch (error) {
@@ -882,7 +1021,13 @@ class WalkieTalkie {
         this.isSpeaking = false;
         this.pttButton.classList.remove('recording');
 
-        // Disconnect script processor
+        // Stop Opus MediaRecorder if active
+        if (this.opusMediaRecorder && this.opusMediaRecorder.state !== 'inactive') {
+            this.opusMediaRecorder.stop();
+            this.opusMediaRecorder = null;
+        }
+
+        // Disconnect script processor (PCM16)
         if (this.scriptProcessor) {
             this.scriptProcessor.disconnect();
             this.scriptProcessor = null;
@@ -1048,6 +1193,52 @@ class WalkieTalkie {
             } catch (fallbackError) {
                 console.error('Fallback audio playback also failed:', fallbackError);
             }
+        }
+    }
+
+    async playOpusAudio(base64Data, sampleRate) {
+        try {
+            if (!base64Data || base64Data.length === 0) return;
+
+            if (!this.audioContext) {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+            }
+
+            // Use Opus decoder if available
+            if (this.opusCodec && this.codecSupport.opus) {
+                const audioBuffer = await this.opusCodec.decode(base64Data, this.audioContext);
+
+                // Play the decoded audio
+                const source = this.audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+
+                const gainNode = this.audioContext.createGain();
+                const volume = this.volumeControl ? this.volumeControl.value / 100 : 0.5;
+                gainNode.gain.value = volume;
+
+                source.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+                source.start();
+
+                // Store the source so we can stop it later
+                this.currentAudioSource = source;
+
+                source.onended = () => {
+                    if (this.currentAudioSource === source) {
+                        this.currentAudioSource = null;
+                    }
+                };
+
+                console.log('Playing Opus audio');
+            } else {
+                console.warn('Opus codec not available, cannot play Opus audio');
+            }
+        } catch (error) {
+            console.error('Error playing Opus audio:', error);
         }
     }
 
@@ -1490,12 +1681,13 @@ class WalkieTalkie {
         // Update button to pause icon
         this.updatePlayButtonIcon(index, 'pause');
 
-        // Play the audio
-        this.playPCMAudio(
-            message.audio_data,
-            parseInt(message.sample_rate),
-            1
-        );
+        // Play the audio with codec support
+        const codec = message.codec || 'pcm16';
+        if (codec === 'opus') {
+            this.playOpusAudio(message.audio_data, parseInt(message.sample_rate) || 48000);
+        } else {
+            this.playPCMAudio(message.audio_data, parseInt(message.sample_rate), 1);
+        }
 
         // Calculate when audio will finish and auto-reset button
         const duration = parseInt(message.duration);
@@ -1582,14 +1774,19 @@ class WalkieTalkie {
         // Highlight current message
         this.highlightHistoryMessage(this.currentHistoryIndex);
 
-        // Play the audio
+        // Play the audio with codec support
         const audioData = message.audio_data;
         const sampleRate = parseInt(message.sample_rate);
+        const codec = message.codec || 'pcm16';
 
         // Calculate duration to wait before playing next
         const duration = parseInt(message.duration);
 
-        this.playPCMAudio(audioData, sampleRate, 1);
+        if (codec === 'opus') {
+            this.playOpusAudio(audioData, sampleRate || 48000);
+        } else {
+            this.playPCMAudio(audioData, sampleRate, 1);
+        }
 
         // Move to next message after this one finishes
         setTimeout(() => {

@@ -100,6 +100,17 @@ if (file_exists(__DIR__ . '/../templates/header.php')) {
                         Courtesy Beep
                     </label>
                 </div>
+
+                <div class="codec-control">
+                    <label for="codec-select">Audio Codec:</label>
+                    <select id="codec-select">
+                        <option value="pcm16">PCM16 (Uncompressed)</option>
+                        <option value="opus">Opus (Compressed - 98% smaller)</option>
+                    </select>
+                    <small class="codec-info" style="display: block; margin-top: 4px; color: #888;">
+                        <span id="codec-status">Checking support...</span>
+                    </small>
+                </div>
             </div>
 
             <div class="instructions">
@@ -126,6 +137,7 @@ if (file_exists(__DIR__ . '/../templates/header.php')) {
         </footer>
     </div>
 
+    <script src="assets/opus-codec.js?v=<?php echo time(); ?>"></script>
     <script src="assets/walkie-talkie.js?v=<?php echo time(); ?>"></script>
     <script>
         let deferredPrompt;
