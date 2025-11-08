@@ -984,8 +984,7 @@ class WebSocketServer implements MessageComponentInterface
 
         // Check if already authenticated
         if (isset($this->authenticatedUsers[$conn->resourceId])) {
-            $conn->s
-            end(json_encode(['type' => 'error', 'message' => 'Already authenticated']));
+            $conn->send(json_encode(['type' => 'error', 'message' => 'Already authenticated']));
             return;
         }
 
