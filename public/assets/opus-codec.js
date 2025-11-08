@@ -158,16 +158,26 @@ class OpusCodec {
         // Convert base64 to ArrayBuffer if needed
         let arrayBuffer;
         if (typeof opusData === 'string') {
-            arrayBuffer = this.base64ToArrayBuffer(opusData);
+            const binaryString = atob(opusData);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            // Create a copy of the buffer to prevent detachment
+            arrayBuffer = bytes.buffer.slice(0);
+
             console.log('Decoding Opus data:', {
                 base64Length: opusData.length,
                 arrayBufferSize: arrayBuffer.byteLength,
                 firstBytes: new Uint8Array(arrayBuffer.slice(0, 4))
             });
         } else if (opusData instanceof Uint8Array) {
-            arrayBuffer = opusData.buffer;
+            arrayBuffer = opusData.buffer.slice(0);
+        } else if (opusData instanceof ArrayBuffer) {
+            arrayBuffer = opusData.slice(0);
         } else {
-            arrayBuffer = opusData;
+            throw new Error('Invalid opusData type: ' + typeof opusData);
         }
 
         // Use Web Audio API to decode Opus
@@ -183,7 +193,9 @@ class OpusCodec {
         } catch (error) {
             console.error('Opus decode error:', error);
             console.error('ArrayBuffer size:', arrayBuffer.byteLength);
-            console.error('First 16 bytes:', new Uint8Array(arrayBuffer.slice(0, 16)));
+            if (arrayBuffer.byteLength > 0) {
+                console.error('First 16 bytes:', new Uint8Array(arrayBuffer.slice(0, 16)));
+            }
             throw error;
         }
     }
