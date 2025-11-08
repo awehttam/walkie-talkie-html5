@@ -16,7 +16,7 @@ $dotenv = Dotenv::createImmutable(__DIR__ . '/..');
 $dotenv->load();
 
 // Database configuration
-$dbPath = __DIR__ . '/../data/app.db';
+$dbPath = __DIR__ . '/../data/walkie-talkie.db';
 
 if (!file_exists($dbPath)) {
     echo "Error: Database file not found at {$dbPath}\n";
