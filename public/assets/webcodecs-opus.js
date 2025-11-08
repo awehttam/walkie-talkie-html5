@@ -155,7 +155,10 @@ class WebCodecsOpus {
             return;
         }
 
+        // Opus encoder can handle variable frame sizes
+        // Just encode the audio data directly
         this.encoder.encode(audioData);
+        audioData.close();
     }
 
     /**

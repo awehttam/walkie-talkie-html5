@@ -59,6 +59,10 @@ class WalkieTalkie {
             pcm16: true,  // Always supported
             opus: false   // Detected on init
         };
+
+        // Scheduled playback for smooth audio
+        this.nextPlaybackTime = 0;
+        this.playbackScheduler = null;
     }
 
     async init() {
@@ -657,6 +661,9 @@ class WalkieTalkie {
                 // When ANYONE stops speaking, refresh the message history
                 // This creates a live log of all messages
                 if (!data.speaking) {
+                    // Reset playback scheduler for next transmission (prevents accumulated delay)
+                    this.nextPlaybackTime = 0;
+
                     // Small delay to allow server to save the message
                     setTimeout(() => {
                         this.requestHistory();
@@ -877,20 +884,43 @@ class WalkieTalkie {
     }
 
     async setupWebCodecsStreaming() {
+        console.log('[WebCodecs] Setting up encoder...');
+
         // Set up WebCodecs encoder
+        let chunkCount = 0;
         this.webCodecsOpus.createEncoder((chunk) => {
-            if (!this.isRecording) return;
+            chunkCount++;
+            console.log(`[WebCodecs] Encoder output chunk #${chunkCount}:`, {
+                size: chunk.byteLength,
+                dataLength: chunk.data.length,
+                isRecording: this.isRecording
+            });
+
+            if (!this.isRecording) {
+                console.warn('[WebCodecs] Chunk received but not recording, skipping');
+                return;
+            }
+
             this.sendOpusAudio(chunk.data, 'audio/opus');
         });
 
+        console.log('[WebCodecs] Encoder created, setting up audio processing...');
+
         // Process audio from microphone using ScriptProcessor
         const source = this.audioContext.createMediaStreamSource(this.audioStream);
-        const processor = this.audioContext.createScriptProcessor(4800, 1, 1); // 100ms at 48kHz
+        const processor = this.audioContext.createScriptProcessor(4096, 1, 1); // ~85ms at 48kHz (power of 2)
 
         source.connect(processor);
         processor.connect(this.audioContext.destination);
 
+        let processCount = 0;
         processor.onaudioprocess = (e) => {
+            processCount++;
+
+            if (processCount === 1) {
+                console.log('[WebCodecs] First audio process callback, isRecording:', this.isRecording);
+            }
+
             if (!this.isRecording) return;
 
             const inputData = e.inputBuffer.getChannelData(0);
@@ -904,13 +934,17 @@ class WalkieTalkie {
                 data: inputData
             });
 
+            if (processCount % 10 === 1) { // Log every 10th
+                console.log(`[WebCodecs] Encoding audio data, process #${processCount}`);
+            }
+
             this.webCodecsOpus.encodeAudioData(audioData);
         };
 
         this.webCodecsProcessor = processor;
         this.webCodecsSource = source;
 
-        console.log('WebCodecs Opus streaming started (high performance mode)');
+        console.log('[WebCodecs] Opus streaming started (high performance mode)');
     }
 
     sendOpusAudio(base64Data, mimeType) {
@@ -1348,7 +1382,20 @@ class WalkieTalkie {
 
         source.connect(gainNode);
         gainNode.connect(this.audioContext.destination);
-        source.start();
+
+        // Calculate when to play this chunk for gapless playback
+        const currentTime = this.audioContext.currentTime;
+
+        // If nextPlaybackTime is in the past or not set, start immediately
+        if (this.nextPlaybackTime < currentTime) {
+            this.nextPlaybackTime = currentTime;
+        }
+
+        // Schedule this chunk to play at the calculated time
+        source.start(this.nextPlaybackTime);
+
+        // Update next playback time to the end of this chunk
+        this.nextPlaybackTime += audioBuffer.duration;
 
         this.currentAudioSource = source;
 
