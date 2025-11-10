@@ -348,6 +348,41 @@ class WalkieTalkie {
                 this.playAllHistory();
             });
         }
+
+        // Setup chat panel
+        this.chatPanel = document.getElementById('chat-panel');
+        this.chatMessages = document.getElementById('chat-messages');
+        this.chatInput = document.getElementById('chat-input');
+        this.chatSendBtn = document.getElementById('chat-send-btn');
+        const chatToggle = document.getElementById('chat-toggle');
+
+        if (chatToggle && this.chatPanel) {
+            chatToggle.addEventListener('click', () => {
+                this.chatPanel.classList.toggle('collapsed');
+                const isCollapsed = this.chatPanel.classList.contains('collapsed');
+                chatToggle.textContent = isCollapsed ? 'Show Chat' : 'Hide Chat';
+            });
+        }
+
+        if (this.chatInput && this.chatSendBtn) {
+            // Enable send button when there's text
+            this.chatInput.addEventListener('input', () => {
+                this.chatSendBtn.disabled = !this.chatInput.value.trim();
+            });
+
+            // Send on button click
+            this.chatSendBtn.addEventListener('click', () => {
+                this.sendChatMessage();
+            });
+
+            // Send on Enter key
+            this.chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.sendChatMessage();
+                }
+            });
+        }
     }
 
     connectWebSocket() {
@@ -550,6 +585,10 @@ class WalkieTalkie {
 
             case 'history_response':
                 this.handleHistoryResponse(data.messages);
+                break;
+
+            case 'chat_message':
+                this.displayChatMessage(data);
                 break;
 
             case 'error':
@@ -1627,6 +1666,72 @@ class WalkieTalkie {
     removeHistoryHighlight() {
         const playingElements = document.querySelectorAll('.history-message.playing');
         playingElements.forEach(el => el.classList.remove('playing'));
+    }
+
+    // Chat methods
+
+    sendChatMessage() {
+        if (!this.chatInput || !this.isConnected) return;
+
+        const message = this.chatInput.value.trim();
+        if (!message) return;
+
+        // Send chat message to server
+        this.ws.send(JSON.stringify({
+            type: 'chat_message',
+            channel: this.channel,
+            message: message,
+            clientId: this.clientId,
+            screenName: this.screenName,
+            timestamp: Date.now()
+        }));
+
+        // Clear input
+        this.chatInput.value = '';
+        this.chatSendBtn.disabled = true;
+
+        console.log('Sent chat message:', message);
+    }
+
+    displayChatMessage(data) {
+        if (!this.chatMessages) return;
+
+        // Remove empty state if it exists
+        const emptyState = this.chatMessages.querySelector('.chat-empty');
+        if (emptyState) {
+            emptyState.remove();
+        }
+
+        // Create message element
+        const messageEl = document.createElement('div');
+        messageEl.className = 'chat-message';
+
+        // Format timestamp
+        const timestamp = new Date(data.timestamp);
+        const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        // Escape HTML to prevent XSS
+        const escapeHtml = (text) => {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        };
+
+        messageEl.innerHTML = `
+            <div class="chat-message-header">
+                <span class="chat-message-sender">${escapeHtml(data.screenName || 'Unknown')}</span>
+                <span class="chat-message-time">${timeString}</span>
+            </div>
+            <div class="chat-message-text">${escapeHtml(data.message)}</div>
+        `;
+
+        // Add to chat
+        this.chatMessages.appendChild(messageEl);
+
+        // Scroll to bottom
+        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+
+        console.log('Displayed chat message from', data.screenName);
     }
 
     // Authentication helper methods

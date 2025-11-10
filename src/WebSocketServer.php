@@ -415,6 +415,10 @@ class WebSocketServer implements MessageComponentInterface
                 $this->sendChannelHistory($from, $data['channel'] ?? '1');
                 break;
 
+            case 'chat_message':
+                $this->handleChatMessage($from, $data);
+                break;
+
             case 'reload_welcome_messages':
                 $this->reloadWelcomeMessages($from);
                 break;
@@ -772,6 +776,39 @@ class WebSocketServer implements MessageComponentInterface
             // Clean up transmission buffer
             unset($this->activeTransmissions[$transmissionKey]);
         }
+    }
+
+    private function handleChatMessage(ConnectionInterface $sender, array $data)
+    {
+        $channel = $data['channel'] ?? '1';
+        $message = $data['message'] ?? '';
+
+        // Validate message
+        if (empty($message) || strlen($message) > 500) {
+            return;
+        }
+
+        // Get sender identity
+        $identity = $this->getConnectionIdentity($sender);
+        if (!$identity) {
+            return;
+        }
+
+        // Prepare chat message to broadcast
+        $chatMessage = [
+            'type' => 'chat_message',
+            'channel' => $channel,
+            'message' => $message,
+            'clientId' => $data['clientId'] ?? '',
+            'screenName' => $identity['screen_name'],
+            'timestamp' => $data['timestamp'] ?? round(microtime(true) * 1000)
+        ];
+
+        // Broadcast to all users in the channel (including sender)
+        $this->broadcastToChannel($channel, $chatMessage);
+
+        $clientIp = $this->getClientIp($sender);
+        echo "[CHAT] Channel {$channel} - {$identity['screen_name']} (IP: {$clientIp}): {$message}\n";
     }
 
     private function saveMessage(ConnectionInterface $conn, string $channel, string $clientId, string $audioData, int $sampleRate, int $duration)

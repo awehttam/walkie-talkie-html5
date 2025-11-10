@@ -119,6 +119,20 @@ if (file_exists(__DIR__ . '/../templates/header.php')) {
                     <div class="history-empty">No messages yet</div>
                 </div>
             </div>
+
+            <div id="chat-panel" class="chat-panel">
+                <div class="chat-header">
+                    <h3>💬 Text Chat</h3>
+                    <button id="chat-toggle" class="chat-toggle-btn">Hide Chat</button>
+                </div>
+                <div id="chat-messages" class="chat-messages">
+                    <div class="chat-empty">No chat messages yet</div>
+                </div>
+                <div class="chat-input-container">
+                    <input type="text" id="chat-input" class="chat-input" placeholder="Type your message..." maxlength="500">
+                    <button id="chat-send-btn" class="chat-send-btn" disabled>Send</button>
+                </div>
+            </div>
         </main>
 
         <footer class="footer">
