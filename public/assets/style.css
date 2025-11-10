@@ -853,7 +853,7 @@ input[type="range"]:focus-visible {
 .chat-header h3 {
     margin: 0;
     font-size: 18px;
-    color: white;
+    color: rgba(0, 0, 0, 0.85);
 }
 
 .chat-toggle-btn {
@@ -894,7 +894,7 @@ input[type="range"]:focus-visible {
 }
 
 .chat-empty {
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(0, 0, 0, 0.5);
     text-align: center;
     padding: 20px;
     font-style: italic;
@@ -931,12 +931,12 @@ input[type="range"]:focus-visible {
 }
 
 .chat-message-time {
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(0, 0, 0, 0.6);
     font-size: 11px;
 }
 
 .chat-message-text {
-    color: rgba(255, 255, 255, 0.95);
+    color: rgba(0, 0, 0, 0.85);
     font-size: 14px;
     line-height: 1.4;
     word-wrap: break-word;
