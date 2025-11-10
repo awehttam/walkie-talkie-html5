@@ -587,6 +587,10 @@ class WalkieTalkie {
                 this.handleHistoryResponse(data.messages);
                 break;
 
+            case 'chat_history_response':
+                this.handleChatHistoryResponse(data.messages);
+                break;
+
             case 'chat_message':
                 this.displayChatMessage(data);
                 break;
@@ -662,6 +666,9 @@ class WalkieTalkie {
 
             // Request message history for this channel
             this.requestHistory();
+
+            // Request chat history for this channel
+            this.requestChatHistory();
 
             // Also notify service worker of current channel
             this.sendToServiceWorker('CHANNEL_CHANGED', { channel: this.channel });
@@ -1434,6 +1441,44 @@ class WalkieTalkie {
             }));
             console.log('Requested history for channel', this.channel);
         }
+    }
+
+    requestChatHistory() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: 'chat_history_request',
+                channel: this.channel
+            }));
+            console.log('Requested chat history for channel', this.channel);
+        }
+    }
+
+    handleChatHistoryResponse(messages) {
+        if (!messages || !this.chatMessages) return;
+
+        console.log('Received', messages.length, 'chat history messages');
+
+        // Clear chat panel
+        this.chatMessages.innerHTML = '';
+
+        if (messages.length === 0) {
+            // Show empty state
+            const emptyState = document.createElement('div');
+            emptyState.className = 'chat-empty';
+            emptyState.textContent = 'No chat messages yet';
+            this.chatMessages.appendChild(emptyState);
+            return;
+        }
+
+        // Display each message
+        messages.forEach(msg => {
+            this.displayChatMessage({
+                screenName: msg.screen_name,
+                message: msg.message,
+                timestamp: parseInt(msg.timestamp),
+                clientId: msg.client_id
+            });
+        });
     }
 
     handleHistoryResponse(messages) {

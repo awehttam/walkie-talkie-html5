@@ -149,14 +149,35 @@ class WebSocketServer implements MessageComponentInterface
                     timestamp INTEGER NOT NULL
                 )
             ');
-            echo "Table created\n";
+            echo "Table message_history created\n";
 
             // Create index for efficient queries
             $this->db->exec('
                 CREATE INDEX IF NOT EXISTS idx_channel_timestamp
                 ON message_history(channel, timestamp DESC)
             ');
-            echo "Index created\n";
+            echo "Index on message_history created\n";
+
+            // Create chat_history table for text messages
+            $this->db->exec('
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel TEXT NOT NULL,
+                    client_id TEXT NOT NULL,
+                    user_id INTEGER,
+                    screen_name TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL
+                )
+            ');
+            echo "Table chat_history created\n";
+
+            // Create index for chat history
+            $this->db->exec('
+                CREATE INDEX IF NOT EXISTS idx_chat_channel_timestamp
+                ON chat_history(channel, timestamp DESC)
+            ');
+            echo "Index on chat_history created\n";
 
             // Verify database file was created
             if (file_exists($dbPath)) {
@@ -413,6 +434,10 @@ class WebSocketServer implements MessageComponentInterface
 
             case 'history_request':
                 $this->sendChannelHistory($from, $data['channel'] ?? '1');
+                break;
+
+            case 'chat_history_request':
+                $this->sendChatHistory($from, $data['channel'] ?? '1');
                 break;
 
             case 'chat_message':
@@ -794,6 +819,8 @@ class WebSocketServer implements MessageComponentInterface
             return;
         }
 
+        $timestamp = $data['timestamp'] ?? round(microtime(true) * 1000);
+
         // Prepare chat message to broadcast
         $chatMessage = [
             'type' => 'chat_message',
@@ -801,11 +828,14 @@ class WebSocketServer implements MessageComponentInterface
             'message' => $message,
             'clientId' => $data['clientId'] ?? '',
             'screenName' => $identity['screen_name'],
-            'timestamp' => $data['timestamp'] ?? round(microtime(true) * 1000)
+            'timestamp' => $timestamp
         ];
 
         // Broadcast to all users in the channel (including sender)
         $this->broadcastToChannel($channel, $chatMessage);
+
+        // Save to database
+        $this->saveChatMessage($sender, $channel, $data['clientId'] ?? '', $message, $timestamp);
 
         $clientIp = $this->getClientIp($sender);
         echo "[CHAT] Channel {$channel} - {$identity['screen_name']} (IP: {$clientIp}): {$message}\n";
@@ -885,6 +915,63 @@ class WebSocketServer implements MessageComponentInterface
         }
     }
 
+    private function saveChatMessage(ConnectionInterface $conn, string $channel, string $clientId, string $message, int $timestamp)
+    {
+        if (!$this->db) {
+            return; // Database not available
+        }
+
+        try {
+            // Get identity for user_id and screen_name
+            $identity = $this->getConnectionIdentity($conn);
+            $userId = $identity['user_id'] ?? null;
+            $screenName = $identity['screen_name'] ?? substr($clientId, 0, 20);
+
+            // Insert new chat message
+            $stmt = $this->db->prepare('
+                INSERT INTO chat_history (channel, client_id, user_id, screen_name, message, timestamp)
+                VALUES (:channel, :client_id, :user_id, :screen_name, :message, :timestamp)
+            ');
+
+            $stmt->execute([
+                ':channel' => $channel,
+                ':client_id' => $clientId,
+                ':user_id' => $userId,
+                ':screen_name' => $screenName,
+                ':message' => $message,
+                ':timestamp' => $timestamp
+            ]);
+
+            // Clean up old messages based on age only (no count limit for chat)
+            $cutoffTimestamp = round((microtime(true) - $this->maxMessageAge) * 1000);
+
+            $deleteStmt = $this->db->prepare('
+                DELETE FROM chat_history
+                WHERE channel = :channel
+                AND timestamp < :cutoff_timestamp
+            ');
+
+            $deleteStmt->bindParam(':channel', $channel);
+            $deleteStmt->bindParam(':cutoff_timestamp', $cutoffTimestamp, PDO::PARAM_INT);
+            $deleteStmt->execute();
+
+            echo "Chat message saved to channel {$channel}\n";
+        } catch (PDOException $e) {
+            echo "Failed to save chat message: " . $e->getMessage() . "\n";
+
+            // Retry logic for SQLITE_BUSY errors
+            if ($e->getCode() == 'HY000' && strpos($e->getMessage(), 'database is locked') !== false) {
+                echo "Retrying after database lock...\n";
+                usleep(100000); // Wait 100ms
+                try {
+                    $this->saveChatMessage($conn, $channel, $clientId, $message, $timestamp);
+                } catch (PDOException $retryError) {
+                    echo "Retry failed: " . $retryError->getMessage() . "\n";
+                }
+            }
+        }
+    }
+
     private function getChannelHistory(string $channel): array
     {
         if (!$this->db) {
@@ -930,6 +1017,52 @@ class WebSocketServer implements MessageComponentInterface
         ]));
 
         echo "Sent history for channel {$channel} to connection {$conn->resourceId}\n";
+    }
+
+    private function getChatHistory(string $channel): array
+    {
+        if (!$this->db) {
+            return []; // Database not available
+        }
+
+        try {
+            $cutoffTimestamp = round((microtime(true) - $this->maxMessageAge) * 1000);
+
+            // No LIMIT clause - retrieve all messages within the retention period
+            $stmt = $this->db->prepare('
+                SELECT client_id, screen_name, message, timestamp
+                FROM chat_history
+                WHERE channel = :channel
+                AND timestamp >= :cutoff_timestamp
+                ORDER BY timestamp ASC
+            ');
+
+            $stmt->bindParam(':channel', $channel);
+            $stmt->bindParam(':cutoff_timestamp', $cutoffTimestamp, PDO::PARAM_INT);
+            $stmt->execute();
+
+            $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo "Retrieved " . count($messages) . " chat messages for channel {$channel}\n";
+
+            return $messages;
+        } catch (PDOException $e) {
+            echo "Failed to retrieve chat history: " . $e->getMessage() . "\n";
+            return [];
+        }
+    }
+
+    private function sendChatHistory(ConnectionInterface $conn, string $channel)
+    {
+        $messages = $this->getChatHistory($channel);
+
+        $conn->send(json_encode([
+            'type' => 'chat_history_response',
+            'channel' => $channel,
+            'messages' => $messages
+        ]));
+
+        echo "Sent chat history for channel {$channel} to connection {$conn->resourceId}\n";
     }
 
     private function broadcastToChannel(string $channelId, array $message, ConnectionInterface $exclude = null)
